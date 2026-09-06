@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QProcess
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,9 +20,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memex_engine.preview import build_preview
+from memex_engine.backend import live_available
 from memex_installer.answers_io import save_answers
 from memex_installer.disks import disks_from_snapshot, discover_disks
-from memex_installer.errors import error_message
+from memex_installer.errors import ErrorCode, error_message
 from memex_installer.i18n_ui import t
 from memex_installer.models import (
     Answers,
@@ -32,7 +34,6 @@ from memex_installer.models import (
     LinuxSizePreset,
     ProfileId,
 )
-from memex_installer.preflight import run_preflight
 from memex_installer.version import PRODUCT_VERSION
 from memex_wizard.pages.account import AccountPage
 from memex_wizard.pages.confirm import ConfirmPage
@@ -47,6 +48,9 @@ class MainWindow(QMainWindow):
     def __init__(self, demo: bool = False, fixture_name: str = "disks_dual_two.json") -> None:
         super().__init__()
         self.demo = demo
+        self.install_enabled = not demo and os.geteuid() == 0 and live_available()
+        self.engine_process = None
+        self.install_session = None
         self.lang = "en"
         self.profile = ProfileId.HOME
         self.disks: list[DiskInfo] = []
@@ -91,6 +95,10 @@ class MainWindow(QMainWindow):
         nav.addStretch()
         nav.addWidget(self.next_btn)
         self.layout.addLayout(nav)
+        self.reboot_btn = QPushButton(t(self.lang, "restart_pc"))
+        self.reboot_btn.clicked.connect(lambda: QProcess.startDetached("systemctl", ["reboot"]))
+        self.reboot_btn.hide()
+        self.layout.addWidget(self.reboot_btn)
 
         self._load_disks(fixture_name)
         self.retranslate()
@@ -105,12 +113,14 @@ class MainWindow(QMainWindow):
             try:
                 self.disks = discover_disks()
             except Exception:  # noqa: BLE001
-                path = FIXTURES / fixture_name
-                self.disks = disks_from_snapshot(json.loads(path.read_text(encoding="utf-8")))
+                self.disks = []
+                msg = error_message(ErrorCode.DISK_GONE, self.lang)
+                QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
 
     def retranslate(self) -> None:
         self.setWindowTitle(t(self.lang, "app_title"))
         self.back_btn.setText(t(self.lang, "back"))
+        self.reboot_btn.setText(t(self.lang, "restart_pc"))
         self._update_nav()
         for i in range(self.stack.count()):
             page = self.stack.widget(i)
@@ -121,7 +131,7 @@ class MainWindow(QMainWindow):
         idx = self.stack.currentIndex()
         self.back_btn.setEnabled(idx > 0)
         if idx == self.stack.count() - 1:
-            self.next_btn.setText(t(self.lang, "install"))
+            self.next_btn.setText(t(self.lang, "install" if self.install_enabled else "preview"))
         else:
             self.next_btn.setText(t(self.lang, "next"))
 
@@ -159,52 +169,85 @@ class MainWindow(QMainWindow):
         )
 
     def _install(self) -> None:
-        answers = self.build_answers()
-        result = run_preflight(answers, self.disks)
-        if not result.ok and result.error:
-            msg = error_message(result.error, self.lang)
+        try:
+            answers = self.build_answers()
+            # Keep the confirmed identity, then rediscover before building a live preview.
+            disks = self.disks if self.demo else discover_disks()
+            report = build_preview(answers, disks)
+        except Exception:
+            msg = error_message(ErrorCode.INSTALL_FAIL, self.lang)
+            QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
+            return
+        if report["status"] == "blocked":
+            msg = report["error"]
             QMessageBox.critical(self, msg["title"], f"{msg['body']}\n\n{msg['action']}\n({msg['code']})")
             return
-        if result.warning:
-            warn = error_message(result.warning, self.lang)
-            choice = QMessageBox.warning(
-                self,
-                warn["title"],
-                f"{warn['body']}\n\n{warn['action']}\n({warn['code']})",
-                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-            )
-            if choice != QMessageBox.StandardButton.Ok:
+        if self.install_enabled:
+            confirm = QMessageBox.warning(self, t(self.lang, "confirm_title"),
+                t(self.lang, "destructive_confirm").format(model=answers.target_disk_model),
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+            if confirm != QMessageBox.StandardButton.Ok:
                 return
-
-        answers_path = Path(os.environ.get("MEMEX_ANSWERS_PATH", "/tmp/memex-answers.yaml"))
-        save_answers(answers_path, answers)
-
-        if self.demo:
-            QMessageBox.information(
-                self,
-                t(self.lang, "reboot_title"),
-                t(self.lang, "reboot_body").format(username=answers.username)
-                + f"\n\n[demo] Saved {answers_path}",
-            )
+            self._start_engine(answers)
             return
+        body = t(self.lang, "preview_body")
+        if report["warning"]:
+            body += "\n\n" + report["warning"]["body"]
+        if report["plan"]["shrinks_windows"]:
+            body += "\n\n" + t(self.lang, "preview_shrink")
+        QMessageBox.information(self, t(self.lang, "preview_title"), body)
 
+    def _start_engine(self, answers):
         try:
-            proc = subprocess.run(
-                [sys.executable, "-m", "memex_engine.run", str(answers_path)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except OSError as exc:
-            QMessageBox.critical(self, "Engine", str(exc))
-            return
+            self.install_session = tempfile.TemporaryDirectory(prefix="memex-", dir="/run")
+            path = Path(self.install_session.name) / "answers.yaml"
+            save_answers(path, answers)
+            self.engine_process = QProcess(self)
+            self.engine_process.finished.connect(self._engine_finished)
+            self.engine_process.errorOccurred.connect(self._engine_error)
+            self.next_btn.setEnabled(False)
+            self.back_btn.setEnabled(False)
+            self.stack.setEnabled(False)
+            self.version_label.setText(t(self.lang, "install_running"))
+            self.engine_process.start(sys.executable, ["-m", "memex_engine.run", str(path),
+                                       "--install", "--confirm-disk", answers.target_disk_id])
+        except Exception:
+            self._engine_error()
 
-        if proc.returncode != 0:
-            QMessageBox.critical(self, "Engine", proc.stderr or proc.stdout or "failed")
-            return
+    def _cleanup_engine(self):
+        if self.install_session:
+            self.install_session.cleanup()
+            self.install_session = None
+        self.next_btn.setEnabled(True)
+        self.back_btn.setEnabled(True)
+        self.stack.setEnabled(True)
+        self.version_label.setText(PRODUCT_VERSION)
 
-        QMessageBox.information(
-            self,
-            t(self.lang, "reboot_title"),
-            t(self.lang, "reboot_body").format(username=answers.username),
-        )
+    def _engine_error(self, *_):
+        self._cleanup_engine()
+        msg = error_message(ErrorCode.INSTALL_FAIL, self.lang)
+        QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
+
+    def _engine_finished(self, code, exit_status):
+        raw = bytes(self.engine_process.readAllStandardOutput()).decode(errors="replace")
+        self._cleanup_engine()
+        try:
+            report = json.loads(raw)
+        except ValueError:
+            report = {}
+        if code != 0 or report.get("status") != "os_installed" or not report.get("installed"):
+            self._engine_error()
+            return
+        self.next_btn.setEnabled(False)
+        self.back_btn.setEnabled(False)
+        self.stack.setEnabled(False)
+        QMessageBox.information(self, t(self.lang, "reboot_title"),
+                                t(self.lang, "reboot_body").format(username=self.username))
+        self.version_label.setText(t(self.lang, "reboot_body").format(username=self.username))
+        self.reboot_btn.show()
+
+    def closeEvent(self, event):
+        if self.engine_process and self.engine_process.state() != QProcess.ProcessState.NotRunning:
+            event.ignore()
+        else:
+            super().closeEvent(event)

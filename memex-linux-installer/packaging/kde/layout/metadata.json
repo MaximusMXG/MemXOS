@@ -1,0 +1,12 @@
+{
+  "KPlugin": {
+    "Id": "org.memex.desktop",
+    "Name": "Memory Express",
+    "Description": "Memory Express workstation desktop defaults",
+    "Version": "2026.09.2",
+    "Category": "Plasma Look And Feel",
+    "Authors": [{"Name": "Memory Express"}]
+  },
+  "KPackageStructure": "Plasma/LookAndFeel",
+  "X-Plasma-APIVersion": "2"
+}

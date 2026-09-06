@@ -7,6 +7,7 @@ import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from memex_installer.secure_io import atomic_write
 
 DEFAULT_SETUP_DIR = Path(os.environ.get("MEMEX_SETUP_DIR", "/var/lib/memex-setup"))
 STUCK_SECONDS = 180
@@ -34,13 +35,13 @@ class SetupState:
         return self.complete_path.exists()
 
     def mark_complete(self) -> None:
-        self.complete_path.write_text("ok\n", encoding="utf-8")
+        atomic_write(self.complete_path, "ok\n", 0o644)
         self.write_status(
             Status(phase="complete", step="done", message="Setup complete", updated_at=time.time())
         )
 
     def beat(self) -> None:
-        self.heartbeat_path.write_text(str(time.time()), encoding="utf-8")
+        atomic_write(self.heartbeat_path, str(time.time()), 0o644)
 
     def heartbeat_age(self) -> float | None:
         if not self.heartbeat_path.exists():
@@ -56,19 +57,22 @@ class SetupState:
         if age is None:
             return False
         status = self.read_status()
-        if status and status.phase in {"complete", "waiting_network"}:
+        if status and status.phase in {"complete", "waiting_network", "failed", "reboot_required"}:
             return False
         return age > timeout
 
     def write_status(self, status: Status) -> None:
         status.updated_at = time.time()
-        self.status_path.write_text(json.dumps(asdict(status), indent=2), encoding="utf-8")
+        atomic_write(self.status_path, json.dumps(asdict(status), indent=2), 0o644)
 
     def read_status(self) -> Status | None:
         if not self.status_path.exists():
             return None
-        data = json.loads(self.status_path.read_text(encoding="utf-8"))
-        return Status(**data)
+        try:
+            data = json.loads(self.status_path.read_text(encoding="utf-8"))
+            return Status(**data)
+        except (OSError, ValueError, TypeError):
+            return None
 
     def request_retry(self) -> None:
         self.retry_path.write_text(str(time.time()), encoding="utf-8")

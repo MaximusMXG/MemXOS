@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -28,6 +29,9 @@ class DiskPage(QWidget):
         layout.addWidget(self.list)
         self.linux_only = QRadioButton()
         self.dual_boot = QRadioButton()
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.addButton(self.linux_only)
+        self.mode_group.addButton(self.dual_boot)
         self.linux_only.setChecked(True)
         layout.addWidget(self.linux_only)
         layout.addWidget(self.dual_boot)
@@ -36,6 +40,9 @@ class DiskPage(QWidget):
         self.size_half = QRadioButton()
         self.size_100 = QRadioButton()
         self.size_rest = QRadioButton()
+        self.size_group = QButtonGroup(self)
+        for btn in (self.size_half, self.size_100, self.size_rest):
+            self.size_group.addButton(btn)
         self.size_100.setChecked(True)
         for btn in (self.size_half, self.size_100, self.size_rest):
             layout.addWidget(btn)
@@ -51,6 +58,8 @@ class DiskPage(QWidget):
         self._populate()
 
     def _populate(self) -> None:
+        current = self._selected_disk()
+        selected_id = current.id if current else self.wizard.selected_disk_id
         self.list.clear()
         for disk in self.wizard.disks:
             if disk.is_usb:
@@ -61,7 +70,9 @@ class DiskPage(QWidget):
             item.setData(256, disk.id)  # Qt.UserRole
             self.list.addItem(item)
         if self.list.count():
-            self.list.setCurrentRow(0)
+            row = next((i for i in range(self.list.count())
+                        if self.list.item(i).data(256) == selected_id), 0)
+            self.list.setCurrentRow(row)
         self._refresh_options()
 
     def _selected_disk(self):

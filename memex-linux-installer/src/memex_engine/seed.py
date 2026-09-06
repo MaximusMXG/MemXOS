@@ -1,62 +1,37 @@
-"""Seed installed OS with completer, profiles, and branding.
-
-Never copies the customer password into the target rootfs.
-"""
-
-from __future__ import annotations
-
+"""Seed the installed OS; no answer files or credentials are copied."""
 import shutil
 from pathlib import Path
-
 from memex_installer.models import Language, ProfileId
+from memex_installer.secure_io import atomic_write
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = Path(__file__).resolve().parents[1]
 
 
-def seed_target(
-    rootfs: Path,
-    profile: ProfileId,
-    language: Language,
-    *,
-    source_root: Path | None = None,
-) -> None:
-    root = source_root or PACKAGE_ROOT
-    etc_memex = rootfs / "etc" / "memex"
-    etc_memex.mkdir(parents=True, exist_ok=True)
-    (etc_memex / "profile").write_text(profile.value + "\n", encoding="utf-8")
-    (etc_memex / "language").write_text(language.value + "\n", encoding="utf-8")
-
-    profiles_src = root / "profiles"
-    profiles_dst = etc_memex / "profiles"
-    if profiles_dst.exists():
-        shutil.rmtree(profiles_dst)
-    shutil.copytree(profiles_src, profiles_dst)
-
-    # Copy Python package into target for completer
-    opt = rootfs / "opt" / "memex-linux-installer"
-    if opt.exists():
-        shutil.rmtree(opt)
-    opt.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(SRC_ROOT / "memex_installer", opt / "memex_installer")
-    shutil.copytree(SRC_ROOT / "memex_completer", opt / "memex_completer")
-    shutil.copytree(profiles_src, opt / "profiles")
-
-    unit_src = root / "packaging" / "systemd" / "memex-setup.service"
-    unit_dst = rootfs / "etc" / "systemd" / "system" / "memex-setup.service"
-    unit_dst.parent.mkdir(parents=True, exist_ok=True)
-    if unit_src.exists():
-        shutil.copy2(unit_src, unit_dst)
-
-    desktop_src = root / "packaging" / "desktop" / "memex-setup.desktop"
-    desktop_dst = rootfs / "etc" / "xdg" / "autostart" / "memex-setup.desktop"
-    desktop_dst.parent.mkdir(parents=True, exist_ok=True)
-    if desktop_src.exists():
-        shutil.copy2(desktop_src, desktop_dst)
-
-    kde_src = root / "packaging" / "kde" / "layout"
-    if kde_src.exists():
-        kde_dst = etc_memex / "kde-layout"
-        if kde_dst.exists():
-            shutil.rmtree(kde_dst)
-        shutil.copytree(kde_src, kde_dst)
+def seed_target(rootfs: Path, profile: ProfileId, language: Language, *, source_root: Path | None = None) -> None:
+    source = source_root or PACKAGE_ROOT
+    config = rootfs / 'etc/memex'
+    config.mkdir(parents=True, exist_ok=True)
+    atomic_write(config / 'profile', profile.value + '\n', 0o644)
+    atomic_write(config / 'language', language.value + '\n', 0o644)
+    shutil.copytree(source / 'profiles', config / 'profiles', dirs_exist_ok=True)
+    opt = rootfs / 'opt/memex-linux-installer'
+    for package in ('memex_installer', 'memex_completer'):
+        shutil.copytree(source / 'src' / package, opt / 'src' / package,
+                        dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    shutil.copytree(source / 'profiles', opt / 'profiles', dirs_exist_ok=True)
+    for relative, destination in [
+        ('systemd/memex-setup.service', 'etc/systemd/system/memex-setup.service'),
+        ('desktop/memex-setup.desktop', 'etc/xdg/autostart/memex-setup.desktop'),
+        ('polkit/49-memex-setup.rules', 'etc/polkit-1/rules.d/49-memex-setup.rules'),
+    ]:
+        dest = rootfs / destination
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / 'packaging' / relative, dest)
+    wants = rootfs / 'etc/systemd/system/multi-user.target.wants'
+    wants.mkdir(parents=True, exist_ok=True)
+    link = wants / 'memex-setup.service'
+    if not link.is_symlink():
+        link.symlink_to('../memex-setup.service')
+    state = rootfs / 'var/lib/memex-setup'
+    state.mkdir(parents=True, exist_ok=True, mode=0o755)
+    shutil.copytree(source / 'packaging/kde/layout', config / 'kde-layout', dirs_exist_ok=True)

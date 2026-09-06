@@ -1,0 +1,8 @@
+// Allow an active local user to retry only the Memory Express setup unit.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "memex-setup.service" &&
+        action.lookup("verb") == "restart" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

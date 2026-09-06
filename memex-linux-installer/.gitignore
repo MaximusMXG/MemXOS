@@ -7,3 +7,10 @@ build/
 .pytest_cache/
 iso/cache/
 *.iso
+
+dist/
+vendor/
+iso/cache/
+iso/work/
+*.iso
+*.qcow2

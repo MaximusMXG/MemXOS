@@ -1,4 +1,4 @@
-"""Partition helpers. Dry-run by default unless MEMEX_DRY_RUN=0."""
+"""Preview partition intent. Real disk mutation is not implemented or enabled."""
 
 from __future__ import annotations
 
@@ -33,27 +33,24 @@ def plan_operations(plan: PartitionPlan, target: DiskInfo) -> list[PlannedOp]:
         ops.append(
             PlannedOp(
                 description=f"Shrink Windows NTFS on {target.device_path} for {plan.linux_size_bytes} bytes Linux",
-                command=["ntfsresize", "--info", target.device_path],
+                command=[],
             )
         )
         ops.append(
             PlannedOp(
                 description="Create Linux partitions in freed space",
-                command=["sgdisk", "-n", "0:0:0", "-t", "0:8300", target.device_path],
+                command=[],
             )
         )
     return ops
 
 
 def execute_plan(plan: PartitionPlan, target: DiskInfo) -> list[str]:
-    """Return log lines. Only runs commands when MEMEX_DRY_RUN=0."""
-    dry_run = os.environ.get("MEMEX_DRY_RUN", "1") != "0"
+    """Return previews only; reject the obsolete destructive environment switch."""
+    if os.environ.get("MEMEX_DRY_RUN") == "0":
+        raise RuntimeError("Real installation is unavailable in this development build.")
     logs: list[str] = []
     for op in plan_operations(plan, target):
-        line = f"{'[dry-run] ' if dry_run else ''}{op.description}: {' '.join(op.command)}"
+        line = f"[preview] {op.description}"
         logs.append(line)
-        if not dry_run:
-            import subprocess
-
-            subprocess.run(op.command, check=True)
     return logs

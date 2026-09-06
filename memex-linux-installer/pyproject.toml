@@ -1,6 +1,6 @@
 [project]
 name = "memex-linux-installer"
-version = "2026.9.1"
+version = "2026.9.2rc1"
 description = "Memory Express Kubuntu LTS shop installer"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "jsonschema>=4", "pyudev", "python-debian", "oauthlib", "attrs", "packaging"]
 
 [project.scripts]
 memex-wizard = "memex_wizard.app:main"

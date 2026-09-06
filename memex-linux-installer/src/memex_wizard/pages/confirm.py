@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from html import escape
 
 from memex_installer.i18n_ui import t
 
@@ -28,14 +29,15 @@ class ConfirmPage(QWidget):
         disk = next((d for d in self.wizard.disks if d.id == self.wizard.selected_disk_id), None)
         model = disk.model if disk else "?"
         size = _fmt_size(disk.size_bytes) if disk else "?"
-        mode = self.wizard.mode.value
+        lang = self.wizard.lang
+        mode = "linux_only" if self.wizard.mode.value == "linux_only" else "dual_boot"
+        preset = {"half": "size_half", "100gb": "size_100", "all_leftover": "size_rest", "full_disk": "size_full"}[self.wizard.linux_size.value]
         self.summary.setText(
-            f"<b>{model}</b><br><span style='font-size:32px'>{size}</span><br><br>"
-            f"Language: {self.wizard.lang}<br>"
-            f"Profile: {self.wizard.profile.value}<br>"
-            f"Mode: {mode}<br>"
-            f"Linux size: {self.wizard.linux_size.value}<br>"
-            f"User: {self.wizard.username}"
+            f"<b>{escape(model)}</b><br><span style='font-size:32px'>{size}</span><br><br>"
+            f"{t(lang, 'language_title')}: {'Français' if lang.startswith('fr') else 'English'}<br>"
+            f"{t(lang, 'pc_type_title')}: {t(lang, self.wizard.profile.value)}<br>"
+            f"{t(lang, mode)}<br>{t(lang, preset)}<br>"
+            f"{t(lang, 'username')}: {escape(self.wizard.username)}"
         )
 
     def retranslate(self) -> None:

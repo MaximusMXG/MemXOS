@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidg
 
 from memex_installer.i18n_ui import t
 from memex_installer.models import Answers
+import re
 
 
 class AccountPage(QWidget):
@@ -46,14 +47,15 @@ class AccountPage(QWidget):
     def validate(self) -> bool:
         self.error.clear()
         if not self.display_name.text().strip():
-            self.error.setText("Display name required")
+            self.error.setText(t(self.wizard.lang, "account_name_error"))
             return False
         user = self.username.text().strip().lower()
-        if not user or " " in user:
-            self.error.setText("Username must be lowercase ASCII, no spaces")
+        if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", user) or user in {"root", "daemon", "nobody", "ubuntu", "kubuntu", "memex"}:
+            self.error.setText(t(self.wizard.lang, "account_user_error"))
             return False
-        if not self.password.text() or self.password.text() != self.password2.text():
-            self.error.setText("Passwords must match")
+        if (not self.password.text() or self.password.text() != self.password2.text()
+                or any(c in self.password.text() for c in "\n\r\x00")):
+            self.error.setText(t(self.wizard.lang, "account_password_error"))
             return False
         self.wizard.display_name = self.display_name.text().strip()
         self.wizard.username = user

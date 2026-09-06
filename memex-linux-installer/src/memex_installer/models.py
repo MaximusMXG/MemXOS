@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import re
 
@@ -39,12 +39,12 @@ class Answers:
     linux_size: LinuxSizePreset
     display_name: str
     username: str
-    password: str
+    password: str = field(repr=False)
     hostname: str
 
     @staticmethod
     def hostname_for(username: str) -> str:
-        clean = re.sub(r"[^a-z0-9_-]", "", username.lower())
+        clean = re.sub(r"[^a-z0-9-]", "-", username.lower()).strip("-")[:60]
         return f"{clean or 'user'}-pc"
 
     @staticmethod
@@ -62,6 +62,11 @@ class DiskInfo:
     is_usb: bool = False
     has_windows: bool = False
     bitlocker_on: bool = False
+    serial: str = ""
+    wwn: str = ""
+    read_only: bool = False
+    mounted: bool = False
+    stable_path: str = ""
 
 
 @dataclass

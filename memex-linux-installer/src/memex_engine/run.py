@@ -1,4 +1,4 @@
-"""CLI: memex-engine /path/to/answers.yaml"""
+"""CLI for development previews; this build cannot install an OS."""
 
 from __future__ import annotations
 
@@ -7,57 +7,58 @@ import json
 import sys
 from pathlib import Path
 
-from memex_engine.autoinstall import write_autoinstall
-from memex_engine.partition import execute_plan
+from memex_engine.preview import build_preview
+from memex_engine.backend import install
 from memex_engine.seed import seed_target
 from memex_installer.answers_io import load_answers
-from memex_installer.disks import discover_disks, disks_from_snapshot, find_disk
+from memex_installer.disks import discover_disks, disks_from_snapshot
 from memex_installer.errors import ErrorCode, error_message
-from memex_installer.preflight import run_preflight
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Memory Express Linux installer engine")
-    parser.add_argument("answers", type=Path, help="Path to answers.yaml")
-    parser.add_argument("--fixture", type=Path, help="Use disk fixture JSON instead of lsblk")
-    parser.add_argument("--autoinstall-out", type=Path, default=Path("/tmp/memex-autoinstall.yaml"))
-    parser.add_argument("--seed-root", type=Path, help="Optional rootfs to seed (dry/dev)")
+    parser = argparse.ArgumentParser(description="Memory Express installation preview (no disk changes)")
+    parser.add_argument("answers", type=Path)
+    parser.add_argument("--fixture", type=Path, help="Use fixture disks instead of live discovery")
+    parser.add_argument("--preview-out", type=Path, help="Save a password-free JSON preview")
+    parser.add_argument("--seed-root", type=Path, help="Seed a new, empty development directory")
+    parser.add_argument("--install", action="store_true", help="Install from the MemXOS live ISO")
+    parser.add_argument("--confirm-disk", help="Exact confirmed stable disk identifier")
     args = parser.parse_args(argv)
-
-    answers = load_answers(args.answers)
-    if args.fixture:
-        import json as _json
-
-        disks = disks_from_snapshot(_json.loads(args.fixture.read_text(encoding="utf-8")))
-    else:
-        disks = discover_disks()
-
-    result = run_preflight(answers, disks)
-    if not result.ok or result.plan is None:
-        code = result.error or ErrorCode.INSTALL_FAIL
-        print(json.dumps(error_message(code, answers.language.value)), file=sys.stderr)
+    lang = "en"
+    try:
+        answers = load_answers(args.answers)
+        lang = answers.language.value
+        if args.install:
+            if args.fixture or args.seed_root or args.preview_out:
+                raise ValueError("Installation cannot use fixtures or development outputs.")
+            install(answers, args.confirm_disk)
+            print(json.dumps({"status": "os_installed", "installed": True, "setup_complete": False}))
+            return 0
+        disks = (disks_from_snapshot(json.loads(args.fixture.read_text(encoding="utf-8")))
+                 if args.fixture else discover_disks())
+        report = build_preview(answers, disks)
+        if report["status"] == "blocked":
+            print(json.dumps(report), file=sys.stderr)
+            return 2
+        if args.seed_root:
+            root = args.seed_root.resolve()
+            # Development seeding must never replace an existing installed system.
+            if root.exists() and (not root.is_dir() or any(root.iterdir())):
+                raise ValueError("Development seed destination must be a new or empty directory.")
+            seed_target(root, answers.profile, answers.language)
+            report["seed_root"] = str(root)
+        output = json.dumps(report, indent=2)
+        if args.preview_out:
+            args.preview_out.parent.mkdir(parents=True, exist_ok=True)
+            args.preview_out.write_text(output + "\n", encoding="utf-8")
+        print(output)
+        return 0
+    except Exception as exc:  # Convert discovery, YAML and I/O failures to a safe CLI result.
+        # Do not expose raw parser exceptions: they can contain customer credentials.
+        error = error_message(ErrorCode.INSTALL_FAIL, lang)
+        error["reason"] = type(exc).__name__
+        print(json.dumps({"status": "blocked", "installed": False, "disk_changes": False, "error": error}), file=sys.stderr)
         return 2
-
-    target = find_disk(disks, answers.target_disk_id)
-    if target is None:
-        print(json.dumps(error_message(ErrorCode.DISK_GONE, answers.language.value)), file=sys.stderr)
-        return 2
-
-    logs = execute_plan(result.plan, target)
-    for line in logs:
-        print(line)
-
-    write_autoinstall(args.autoinstall_out, answers, result.plan)
-    print(f"Wrote autoinstall to {args.autoinstall_out}")
-
-    if args.seed_root:
-        seed_target(args.seed_root, answers.profile, answers.language)
-        print(f"Seeded {args.seed_root}")
-
-    if result.warning:
-        print(json.dumps(error_message(result.warning, answers.language.value)))
-
-    return 0
 
 
 if __name__ == "__main__":

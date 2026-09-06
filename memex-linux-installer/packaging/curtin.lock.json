@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/canonical/curtin",
+  "commit": "e2fc2bb9e38c7336c181567864f6b963e5c3835b",
+  "url": "https://codeload.github.com/canonical/curtin/tar.gz/e2fc2bb9e38c7336c181567864f6b963e5c3835b",
+  "sha256": "4f6e28c53c4a780db0d02873628ca0897b9099fac0507b2a793620b2d1c55177",
+  "license": "AGPL-3.0"
+}

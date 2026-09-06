@@ -1,0 +1,17 @@
+[Unit]
+Description=Memory Express live installer kiosk
+After=systemd-user-sessions.service plymouth-quit-wait.service
+ConditionKernelCommandLine=boot=casper
+ConditionPathExists=/etc/memex/live-build.json
+
+[Service]
+ExecStart=/usr/bin/xinit /usr/libexec/memex-kiosk -- /usr/lib/xorg/Xorg :0 vt7 -nolisten tcp
+Restart=always
+RestartSec=3
+StandardInput=tty
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=graphical.target

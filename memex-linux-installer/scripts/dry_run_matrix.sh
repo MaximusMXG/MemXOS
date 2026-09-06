@@ -17,7 +17,7 @@ answers = Answers(
     language=Language.EN,
     profile=ProfileId.HOME,
     target_disk_id="wwn-nvme-linux",
-    target_disk_model="SSD",
+    target_disk_model="Samsung SSD 990 PRO 2TB",
     target_disk_size_bytes=2000398934016,
     mode=InstallMode.DUAL_BOOT,
     linux_size=LinuxSizePreset.FULL_DISK,
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as td:
     path = Path(td) / "answers.yaml"
     save_answers(path, answers)
     fixture = Path("tests/fixtures/disks_dual_two.json")
-    rc = main([str(path), "--fixture", str(fixture), "--autoinstall-out", str(Path(td) / "ai.yaml"), "--seed-root", str(Path(td) / "root")])
+    rc = main([str(path), "--fixture", str(fixture), "--preview-out", str(Path(td) / "preview.json"), "--seed-root", str(Path(td) / "root")])
     assert rc == 0, rc
 print("dry_run_matrix: ok")
 PY

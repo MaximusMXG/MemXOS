@@ -1,0 +1,4 @@
+#!/bin/sh
+export PYTHONPATH=/opt/memex-linux-installer/src
+export QT_QPA_PLATFORM=xcb
+exec /usr/bin/dbus-run-session -- /usr/bin/python3 -m memex_wizard.app

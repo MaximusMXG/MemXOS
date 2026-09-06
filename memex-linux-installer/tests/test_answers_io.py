@@ -31,12 +31,14 @@ def test_round_trip(tmp_path: Path):
     assert loaded.username == "alex"
     assert loaded.mode == InstallMode.DUAL_BOOT
     assert loaded.linux_size == LinuxSizePreset.GB_100
-    assert loaded.password == "secret"
+    assert loaded.password.startswith("$6$")
+    assert "secret" not in path.read_text()
+    assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_hostname_from_username():
     assert Answers.hostname_for("Alex") == "alex-pc"
-    assert Answers.hostname_for("bob_smith") == "bob_smith-pc"
+    assert Answers.hostname_for("bob_smith") == "bob-smith-pc"
 
 
 def test_username_from_display():

@@ -1,0 +1,11 @@
+MemXOS 2026.09.2 RC1 — development build kit
+
+Start with memex-linux-installer/docs/CURRENT_STATUS.md.
+Build instructions: memex-linux-installer/iso/README.md
+Draft Debian package: memex-linux-installer/dist/
+Source checkpoint: f5da8be7e1d5e9bec0b628468219fc9468dc0e85
+Branch: work/iso-build-package
+
+This ZIP does not contain a bootable ISO. Runtime and hardware validation are pending.
+72 automated tests and both Curtin storage schema checks passed.
+No changes have been pushed to GitHub.

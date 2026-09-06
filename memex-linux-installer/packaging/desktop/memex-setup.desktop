@@ -1,7 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Memory Express Setup
-Exec=env PYTHONPATH=/opt/memex-linux-installer /usr/bin/python3 -m memex_completer.gui
-X-KDE-autostart-phase=2
-X-GNOME-Autostart-enabled=true
-OnlyShowIn=KDE;XFCE;GNOME;
+Name[fr]=Configuration Memory Express
+Exec=/usr/bin/env PYTHONPATH=/opt/memex-linux-installer/src /usr/bin/python3 -m memex_completer.gui
+Terminal=false
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel

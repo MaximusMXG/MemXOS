@@ -11,7 +11,7 @@ DEFAULT_PROFILES_DIR = Path(__file__).resolve().parents[2] / "profiles"
 
 def _load_yaml(path: Path) -> dict:
     if not path.exists():
-        return {"apt": [], "flatpak": [], "special": []}
+        raise FileNotFoundError(f"Required profile is missing: {path.name}")
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {
         "apt": list(data.get("apt") or []),

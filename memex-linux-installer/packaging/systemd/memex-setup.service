@@ -2,14 +2,20 @@
 Description=Memory Express first-boot setup
 After=network-online.target
 Wants=network-online.target
+ConditionPathExists=/etc/memex/os-installed
+ConditionPathExists=!/var/lib/memex-setup/setup-complete
+StartLimitIntervalSec=0
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
-Environment=PYTHONPATH=/opt/memex-linux-installer
+Type=exec
+Environment=PYTHONPATH=/opt/memex-linux-installer/src
+Environment=DEBIAN_FRONTEND=noninteractive
 ExecStart=/usr/bin/python3 -m memex_completer.service
 Restart=on-failure
 RestartSec=30
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0022
 
 [Install]
 WantedBy=multi-user.target

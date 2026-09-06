@@ -1,9 +1,10 @@
 apt:
-  - steam
+  - steam-installer
   - gamemode
   - mangohud
 flatpak:
   - com.discordapp.Discord
   - com.heroicgameslauncher.hgl
+  - net.davidotek.pupgui2
 special:
   - proton-extras

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from memex_installer.secure_io import atomic_write, password_hash
 from memex_installer.models import (
     Answers,
     InstallMode,
@@ -30,11 +31,11 @@ def save_answers(path: Path, answers: Answers) -> None:
         "linux_size": answers.linux_size.value,
         "display_name": answers.display_name,
         "username": answers.username,
-        "password": answers.password,
+        "password": password_hash(answers.password),
         "hostname": answers.hostname,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    atomic_write(path, yaml.safe_dump(data, sort_keys=False))
 
 
 def load_answers(path: Path) -> Answers:

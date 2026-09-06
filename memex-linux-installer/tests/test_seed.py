@@ -12,4 +12,4 @@ def test_seed_writes_profile_not_password(tmp_path: Path):
     assert (rootfs / "etc" / "memex" / "language").read_text(encoding="utf-8").strip() == "en"
     assert (rootfs / "etc" / "memex" / "profiles" / "gaming.yaml").exists()
     assert not (rootfs / "etc" / "memex" / "answers.yaml").exists()
-    assert (rootfs / "opt" / "memex-linux-installer" / "memex_completer").exists()
+    assert (rootfs / "opt" / "memex-linux-installer" / "src" / "memex_completer").exists()

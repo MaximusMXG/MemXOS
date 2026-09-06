@@ -16,7 +16,7 @@ def profiles_dir() -> Path:
 def test_gaming_includes_all_and_steam(profiles_dir: Path):
     pkgs = load_profile(ProfileId.GAMING, profiles_dir)
     assert "firefox" in pkgs.apt
-    assert "steam" in pkgs.apt
+    assert "steam-installer" in pkgs.apt
     assert "libreoffice" not in pkgs.apt
 
 

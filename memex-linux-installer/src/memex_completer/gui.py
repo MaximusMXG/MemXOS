@@ -5,11 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QProcess
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -17,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from memex_completer.state import SetupState
 from memex_installer.errors import ErrorCode, error_message
-from memex_installer.i18n_ui import t
+from memex_installer.i18n_ui import t, UI
 
 
 def _language() -> str:
@@ -49,6 +50,14 @@ class CompleterWindow(QMainWindow):
         layout.addWidget(self.title)
         layout.addWidget(self.body)
         layout.addWidget(self.retry_btn)
+        self.restart_btn = QPushButton(t(self.lang, "restart_pc"))
+        self.restart_btn.clicked.connect(lambda: self._control(["reboot"]))
+        self.restart_btn.hide()
+        self.done_btn = QPushButton(t(self.lang, "done"))
+        self.done_btn.clicked.connect(self.close)
+        self.done_btn.hide()
+        layout.addWidget(self.restart_btn)
+        layout.addWidget(self.done_btn)
         layout.addStretch()
 
         self.timer = QTimer(self)
@@ -56,13 +65,27 @@ class CompleterWindow(QMainWindow):
         self.timer.start(2000)
         self.refresh()
 
-    def _retry(self) -> None:
-        self.state.request_retry()
+    def _control(self, args):
+        self.control = QProcess(self)
+        self.control.finished.connect(self._control_finished)
+        self.control.errorOccurred.connect(lambda *_: QMessageBox.critical(self, t(self.lang, "setup_title"), t(self.lang, "control_failed")))
+        self.control.start("systemctl", args)
         self.retry_btn.hide()
 
+    def _control_finished(self, code, _):
+        if code != 0:
+            QMessageBox.critical(self, t(self.lang, "setup_title"), t(self.lang, "control_failed"))
+        self.refresh()
+
+    def _retry(self):
+        self._control(["restart", "memex-setup.service"])
+
     def refresh(self) -> None:
+        self.restart_btn.hide()
+        self.done_btn.hide()
         if self.state.is_complete():
             self.body.setText(t(self.lang, "setup_complete"))
+            self.done_btn.show()
             self.retry_btn.hide()
             return
 
@@ -93,7 +116,13 @@ class CompleterWindow(QMainWindow):
             self.retry_btn.show()
             return
 
-        self.body.setText(f"{status.step}\n\n{status.message}")
+        if status.phase == "reboot_required":
+            self.body.setText(t(self.lang, "setup_reboot"))
+            self.restart_btn.show()
+            self.retry_btn.hide()
+            return
+
+        self.body.setText(t(self.lang, "step_" + status.step) if "step_" + status.step in UI["en"] else status.step)
         self.retry_btn.hide()
 
 
