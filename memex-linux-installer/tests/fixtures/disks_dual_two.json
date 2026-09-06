@@ -1,0 +1,31 @@
+{
+  "disks": [
+    {
+      "id": "wwn-sda-windows",
+      "model": "Samsung 870 EVO 1TB",
+      "size_bytes": 1000204886016,
+      "device_path": "/dev/sda",
+      "is_usb": false,
+      "has_windows": true,
+      "bitlocker_on": false
+    },
+    {
+      "id": "wwn-nvme-linux",
+      "model": "Samsung SSD 990 PRO 2TB",
+      "size_bytes": 2000398934016,
+      "device_path": "/dev/nvme0n1",
+      "is_usb": false,
+      "has_windows": false,
+      "bitlocker_on": false
+    },
+    {
+      "id": "usb-installer",
+      "model": "Memex Installer USB",
+      "size_bytes": 32000000000,
+      "device_path": "/dev/sdb",
+      "is_usb": true,
+      "has_windows": false,
+      "bitlocker_on": false
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "disks": [
+    {
+      "id": "wwn-nvme0",
+      "model": "WD Black SN850X 1TB",
+      "size_bytes": 1000204886016,
+      "device_path": "/dev/nvme0n1",
+      "is_usb": false,
+      "has_windows": true,
+      "bitlocker_on": true
+    },
+    {
+      "id": "usb-installer",
+      "model": "Memex Installer USB",
+      "size_bytes": 32000000000,
+      "device_path": "/dev/sdb",
+      "is_usb": true,
+      "has_windows": false,
+      "bitlocker_on": false
+    }
+  ]
+}

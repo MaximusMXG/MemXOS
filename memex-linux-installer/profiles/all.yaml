@@ -1,0 +1,9 @@
+apt:
+  - firefox
+  - vlc
+  - cups
+  - timeshift
+  - fastfetch
+  - ubuntu-restricted-extras
+flatpak: []
+special: []

@@ -1,0 +1,9 @@
+apt:
+  - steam
+  - gamemode
+  - mangohud
+flatpak:
+  - com.discordapp.Discord
+  - com.heroicgameslauncher.hgl
+special:
+  - proton-extras

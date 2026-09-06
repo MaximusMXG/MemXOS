@@ -1,0 +1,5 @@
+apt:
+  - libreoffice
+  - thunderbird
+flatpak: []
+special: []
