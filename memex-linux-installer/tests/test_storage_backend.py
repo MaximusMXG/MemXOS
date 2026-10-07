@@ -104,3 +104,11 @@ def test_real_install_refused_outside_live_iso(monkeypatch):
     monkeypatch.setattr('memex_engine.backend.subprocess.run', lambda *a, **k: pytest.fail('Command ran'))
     with pytest.raises(RuntimeError):
         install(answers(), 'disk-1')
+
+
+def test_build_config_includes_store_timezone(monkeypatch):
+    from memex_installer.store import Store
+    monkeypatch.setattr('memex_engine.backend.load_store', lambda: Store('America/Vancouver', 'X'))
+    a, d = answers(), disk()
+    _, account = build_config(a, run_preflight(a, [d]).plan, d, partitions=parts())
+    assert account['timezone'] == 'America/Vancouver'

@@ -3,8 +3,10 @@
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import urllib.request
@@ -12,6 +14,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = '2026.9.2~rc1'
+sys.path.insert(0, str(ROOT / 'src'))
+from memex_installer.version import PRODUCT_VERSION  # noqa: E402
+
+
+def brand_version():
+    return re.search(r'\d{4}\.\d{2}', PRODUCT_VERSION).group(0)
 
 
 def fetch_curtin():
@@ -34,7 +42,7 @@ def build(output: Path):
         opt = staging / 'opt/memex-linux-installer'
         for directory in ('src', 'profiles', 'packaging', 'tests/fixtures'):
             shutil.copytree(ROOT / directory, opt / directory,
-                            ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                            ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'mepc-logo-source.png', 'mepc-wordmark.png'))
         with tarfile.open(source_tar) as archive:
             archive.extractall(Path(td) / 'source', filter='data')
         upstream = next((Path(td) / 'source').iterdir())
@@ -66,6 +74,21 @@ def build(output: Path):
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / 'packaging' / source, dest)
         (staging / 'usr/libexec/memex-kiosk').chmod(0o755)
+        # Display branding only; /etc/os-release stays untouched (apt, ubuntu-drivers, Docker rely on it).
+        branding = {
+            'kcm-about-distrorc': 'etc/xdg/kcm-about-distrorc',
+            'memxos-logo.txt': 'usr/share/memxos/memxos-logo.txt',
+            'memxos-logo-large.txt': 'usr/share/memxos/memxos-logo-large.txt',
+            'memxos-logo.png': 'usr/share/memxos/memxos-logo.png',
+        }
+        for source, destination in branding.items():
+            dest = staging / destination
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / 'packaging/branding' / source, dest)
+        fastfetch = staging / 'etc/xdg/fastfetch/config.jsonc'
+        fastfetch.parent.mkdir(parents=True, exist_ok=True)
+        fastfetch.write_text((ROOT / 'packaging/branding/fastfetch/config.jsonc').read_text()
+                             .replace('@MEMXOS_VERSION@', brand_version()))
         shutil.copytree(ROOT / 'packaging/kde/layout', staging / 'usr/share/plasma/look-and-feel/org.memex.desktop')
         xdg = staging / 'etc/xdg/kdeglobals'
         xdg.parent.mkdir(parents=True, exist_ok=True)

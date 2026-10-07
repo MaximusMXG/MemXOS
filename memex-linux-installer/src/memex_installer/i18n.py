@@ -37,6 +37,18 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
             "action": "Choisissez une taille Linux plus petite, ou installez Linux sur un autre disque.",
         },
     },
+    "ME-WINDOWS-HIBERNATED": {
+        "en": {
+            "title": "Windows was not fully shut down",
+            "body": "Windows is hibernated (Fast Startup) or its disk was not closed cleanly, so Linux cannot safely shrink it. Nothing has been changed.",
+            "action": "In Windows, turn off Fast Startup (Control Panel > Power Options > Choose what the power buttons do), then Restart (not Shut down) Windows, run chkdsk if asked, then reboot this USB.",
+        },
+        "fr": {
+            "title": "Windows n'a pas été complètement arrêté",
+            "body": "Windows est en hibernation (démarrage rapide) ou son disque n'a pas été fermé proprement; Linux ne peut pas le réduire en toute sécurité. Rien n'a été modifié.",
+            "action": "Dans Windows, désactivez le démarrage rapide (Panneau de configuration > Options d'alimentation > Choisir l'action des boutons d'alimentation), puis Redémarrez (et non Arrêtez) Windows, lancez chkdsk si demandé, puis redémarrez sur cette clé USB.",
+        },
+    },
     "ME-USB-TARGET": {
         "en": {
             "title": "Cannot install on the USB stick",
@@ -61,6 +73,24 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
             "action": "Rebranchez le disque, puis redémarrez cette clé USB.",
         },
     },
+    "ME-RAID-MODE": {
+        "en": {
+            "title": "Storage is in RAID / Intel RST mode",
+            "body": "This PC's storage is set to Intel RST / VMD (RAID) mode, so Linux may not see the drive or can't safely use it.",
+            "action": "Linux only (wipes the drive): in BIOS/UEFI setup, change storage/SATA mode from RAID/RST/VMD to AHCI (or disable VMD), save, and reboot this USB.\n"
+                      "Dual-boot: do NOT change the BIOS yet. First boot Windows to Safe Mode once "
+                      "(admin Command Prompt: bcdedit /set {current} safeboot minimal), switch to AHCI, "
+                      "boot Windows, then run bcdedit /deletevalue {current} safeboot. Or ask a senior tech.",
+        },
+        "fr": {
+            "title": "Stockage en mode RAID / Intel RST",
+            "body": "Le stockage de ce PC est en mode Intel RST / VMD (RAID); Linux peut ne pas voir le disque ou ne peut pas l'utiliser en toute sécurité.",
+            "action": "Linux seulement (efface le disque) : dans le BIOS/UEFI, passez le mode de stockage/SATA de RAID/RST/VMD à AHCI (ou désactivez VMD), enregistrez, puis redémarrez avec cette clé USB.\n"
+                      "Double démarrage : ne changez PAS le BIOS tout de suite. Démarrez d'abord Windows en mode sans échec une fois "
+                      "(invite de commandes admin : bcdedit /set {current} safeboot minimal), passez à AHCI, "
+                      "démarrez Windows, puis exécutez bcdedit /deletevalue {current} safeboot. Ou demandez à un technicien senior.",
+        },
+    },
     "ME-INSTALL-FAIL": {
         "en": {
             "title": "Install failed",
@@ -77,12 +107,12 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
         "en": {
             "title": "Waiting for network",
             "body": "Setup needs ethernet or internet to install drivers and apps.",
-            "action": "Plug in ethernet. This screen will continue automatically.",
+            "action": "Plug in an ethernet cable or connect to Wi-Fi. This screen will continue automatically.",
         },
         "fr": {
             "title": "En attente du réseau",
             "body": "La configuration a besoin d'Internet pour installer les pilotes et les applications.",
-            "action": "Branchez le câble Ethernet. Cet écran continuera automatiquement.",
+            "action": "Branchez un câble Ethernet ou connectez-vous au Wi-Fi. Cet écran continuera automatiquement.",
         },
     },
     "ME-STUCK": {

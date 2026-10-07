@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import zoneinfo
 import shutil
 import subprocess
 import sys
@@ -15,6 +17,8 @@ from doctor import inspect
 from download import download, verify, sha256
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+from memex_installer.store import DEFAULT_TIMEZONE, validate_timezone  # noqa: E402
 
 
 def run(*command, **kwargs):
@@ -22,7 +26,14 @@ def run(*command, **kwargs):
     return subprocess.run([str(x) for x in command], check=True, **kwargs)
 
 
+def store_slug(name):
+    return re.sub(r'[^a-z0-9]+', '-', (name or '').lower()).strip('-')[:40]
+
+
 def build(args):
+    validate_timezone(args.store_timezone)
+    if args.store_timezone not in zoneinfo.available_timezones():
+        raise RuntimeError('Unknown IANA timezone: ' + args.store_timezone)
     work_parent = args.workdir.resolve()
     work_parent.mkdir(parents=True, exist_ok=True)
     report = inspect(work_parent)
@@ -83,9 +94,12 @@ def build(args):
             'linux-generic', 'grub-efi-amd64-signed', 'shim-signed', 'mokutil', env=env)
         run('chroot', root, 'curtin', 'version', env=env)
         run('chroot', root, '/usr/bin/python3', '-c', 'from PySide6.QtWidgets import QApplication; import yaml', env=env)
+        validate_timezone(args.store_timezone, root)
+        store = {'timezone': args.store_timezone, 'name': args.store_name or ''}
         marker = root / 'etc/memex/live-build.json'
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({'version': '2026.09.2-RC1', 'base_sha256': base_hash, 'base': base.name}))
+        (root / 'etc/memex/store.json').write_text(json.dumps(store) + '\n')
+        marker.write_text(json.dumps({'version': '2026.09.2-RC1', 'base_sha256': base_hash, 'base': base.name, 'store': store}))
         # Enable kiosk only for casper boots, leave normal customer boots to SDDM.
         dropin = root / 'etc/systemd/system/sddm.service.d/memex-live.conf'
         dropin.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +155,7 @@ def build(args):
         output.with_suffix('.build.json').write_text(json.dumps({
             'version': '2026.09.2-RC1', 'built_at': datetime.now(timezone.utc).isoformat(),
             'base_sha256': base_hash, 'iso_sha256': digest, 'deb_sha256': sha256(deb),
-            'validation': 'Built; VM and physical boot/install acceptance pending', 'workspace': str(work)
+            'store': store, 'validation': 'Built; VM and physical boot/install acceptance pending', 'workspace': str(work)
         }, indent=2) + '\n')
         print('ISO created: ' + str(output), flush=True)
     finally:
@@ -155,10 +169,20 @@ if __name__ == '__main__':
     parser.add_argument('--base-iso', type=Path)
     parser.add_argument('--cache', type=Path, default=ROOT / 'iso/cache')
     parser.add_argument('--workdir', type=Path, default=ROOT / 'iso/work')
-    parser.add_argument('--output', type=Path, default=ROOT / 'dist/ME-Linux-2026.09.2-RC1.iso')
+    parser.add_argument('--output', type=Path)
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--store-timezone', help='IANA timezone for this store, e.g. America/Vancouver')
+    parser.add_argument('--store-name', help='Store name recorded in the image and output filename')
     try:
-        build(parser.parse_args())
+        args = parser.parse_args()
+        if args.store_timezone is None:
+            args.store_timezone = DEFAULT_TIMEZONE
+            if os.environ.get('MEMEX_PRIVATE_MOUNT_NAMESPACE') != '1':
+                print('No --store-timezone given; defaulting to ' + DEFAULT_TIMEZONE, flush=True)
+        if args.output is None:
+            slug = store_slug(args.store_name)
+            args.output = ROOT / ('dist/ME-Linux-2026.09.2-RC1' + ('-' + slug if slug else '') + '.iso')
+        build(args)
     except Exception as exc:
         print('Build stopped: ' + str(exc), file=sys.stderr)
         raise SystemExit(2)

@@ -13,6 +13,8 @@ class ErrorCode(Enum):
     NO_NET = "ME-NO-NET"
     STUCK = "ME-STUCK"
     STEP_FAIL = "ME-STEP-FAIL"
+    HIBERNATED = "ME-WINDOWS-HIBERNATED"
+    RAID_MODE = "ME-RAID-MODE"
     TWO_DISK = "ME-TWO-DISK"  # warning, not a hard stop
 
 
@@ -25,3 +27,11 @@ def error_message(code: ErrorCode, lang: str) -> dict[str, str]:
         "body": entry["body"],
         "action": entry["action"],
     }
+
+
+class MemexError(ValueError):
+    """Typed failure carrying a catalog code; the message is the code only (never user data)."""
+
+    def __init__(self, code: ErrorCode):
+        super().__init__(code.value)
+        self.code = code

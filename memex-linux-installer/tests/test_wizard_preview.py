@@ -25,6 +25,8 @@ def window(app):
 def test_mode_and_size_are_independent(window):
     page = window.disk_page
     assert page.linux_only.isChecked()
+    page._ask_dual_boot = lambda: True
+    page.advanced.setChecked(True)
     page.dual_boot.setChecked(True)
     page.size_half.setChecked(True)
     assert page.dual_boot.isChecked()
@@ -67,3 +69,71 @@ def test_live_discovery_failure_never_uses_fixture_disks(window, monkeypatch):
     window._load_disks('disks_dual_two.json')
     assert window.disks == []
     assert messages
+
+
+def _disk_idx(window, windows):
+    return next(i for i, d in enumerate(window.disks) if d.has_windows == windows and not d.is_usb)
+
+
+def test_advanced_hidden_and_resets(window):
+    page = window.disk_page
+    assert not page.advanced.isChecked() and page.advanced_box.isHidden()
+    page._ask_dual_boot = lambda: True
+    page.advanced.setChecked(True)
+    page.dual_boot.setChecked(True)
+    page.advanced.setChecked(False)
+    assert page.linux_only.isChecked() and page.advanced_box.isHidden()
+
+
+def test_dual_boot_cancel_reverts(window):
+    page = window.disk_page
+    page._ask_dual_boot = lambda: False
+    page.advanced.setChecked(True)
+    page.dual_boot.setChecked(True)
+    assert page.linux_only.isChecked() and not page.dual_boot.isChecked()
+
+
+def test_dual_warning_ok_needs_ack(app, window):
+    from PySide6.QtWidgets import QDialog, QDialogButtonBox, QCheckBox
+    from PySide6.QtCore import QTimer
+    from memex_wizard.pages import disk as d
+    seen = {}
+    def probe():
+        dlg = app.activeModalWidget()
+        ok = dlg.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+        seen['before'] = ok.isEnabled()
+        dlg.findChild(QCheckBox).setChecked(True)
+        seen['after'] = ok.isEnabled()
+        ok.click()
+    QTimer.singleShot(0, probe)
+    assert d.confirm_dual_boot(window, 'fr') is True
+    assert seen == {'before': False, 'after': True}
+
+
+def test_windows_erase_warning_and_confirm_gate(window):
+    page = window.disk_page
+    page.list.setCurrentRow(_disk_idx(window, True))
+    assert not page.windows_warning.isHidden()
+    assert page.validate()
+    window.stack.setCurrentIndex(window.stack.count() - 1)
+    window._update_nav()
+    assert not window.next_btn.isEnabled()
+    window.confirm_page.erase_ack.setChecked(True)
+    assert window.next_btn.isEnabled()
+    page.list.setCurrentRow(_disk_idx(window, False))
+    assert page.windows_warning.isHidden()
+    assert page.validate()
+    window._update_nav()
+    assert window.next_btn.isEnabled() and window.confirm_page.erase_ack.isHidden()
+
+
+def test_confirm_dual_summary(window):
+    page = window.disk_page
+    page._ask_dual_boot = lambda: True
+    page.advanced.setChecked(True)
+    page.dual_boot.setChecked(True)
+    page.list.setCurrentRow(_disk_idx(window, False))
+    assert page.validate()
+    window.confirm_page._refresh()
+    assert not window.confirm_page.dual_note.isHidden()
+    assert window.confirm_page.can_install()

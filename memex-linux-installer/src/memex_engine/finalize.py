@@ -9,6 +9,7 @@ from pathlib import Path
 from memex_engine.seed import seed_target
 from memex_installer.models import Language, ProfileId
 from memex_installer.secure_io import HASH_RE, atomic_write
+from memex_installer.store import DEFAULT_TIMEZONE, validate_timezone
 
 
 def configure_files(root: Path, account: dict) -> None:
@@ -22,12 +23,18 @@ def configure_files(root: Path, account: dict) -> None:
     atomic_write(root / 'etc/hosts', f"127.0.0.1 localhost\n127.0.1.1 {account['hostname']}\n::1 localhost ip6-localhost ip6-loopback\n", 0o644)
     atomic_write(root / 'etc/default/locale', f'LANG={locale}\n', 0o644)
     atomic_write(root / 'etc/default/keyboard', f'XKBMODEL="pc105"\nXKBLAYOUT="{keyboard}"\nXKBVARIANT=""\nXKBOPTIONS=""\n', 0o644)
-    atomic_write(root / 'etc/timezone', 'America/Edmonton\n', 0o644)
+    tz = validate_timezone(account.get('timezone', DEFAULT_TIMEZONE), root)
+    atomic_write(root / 'etc/timezone', tz + '\n', 0o644)
     zone = root / 'etc/localtime'
     zone.unlink(missing_ok=True)
-    zone.symlink_to('/usr/share/zoneinfo/America/Edmonton')
+    zone.symlink_to('/usr/share/zoneinfo/' + tz)
     atomic_write(root / 'etc/default/grub.d/90-memex.cfg',
                  'GRUB_TIMEOUT_STYLE=menu\nGRUB_TIMEOUT=5\nGRUB_DISABLE_OS_PROBER=' + ('false' if account['dual_boot'] else 'true') + '\n', 0o644)
+    # Windows keeps the RTC in local time. Match it so the clock doesn't jump when switching OS (what
+    # `timedatectl set-local-rtc 1` persists). Tradeoff: systemd warns a local RTC is less robust around
+    # DST; the alternative, Windows' RealTimeIsUniversal registry key, means editing Windows, which we never do.
+    # Always written so a live-image adjtime can't leak onto a non-dual-boot install.
+    atomic_write(root / 'etc/adjtime', '0.0 0 0.0\n0\n' + ('LOCAL' if account['dual_boot'] else 'UTC') + '\n', 0o644)
     (root / 'etc/memex/live-build.json').unlink(missing_ok=True)
     # No live-session autologin may survive onto the customer OS.
     for path in [root / 'etc/sddm.conf', *(root / 'etc/sddm.conf.d').glob('*.conf')]:
@@ -43,6 +50,19 @@ def configure_files(root: Path, account: dict) -> None:
     machine_id.symlink_to('/etc/machine-id')
 
 
+PURGE_CANDIDATES = ('casper', 'calamares', 'calamares-settings-kubuntu')
+USER_GROUPS = ('sudo', 'adm', 'video', 'audio', 'plugdev', 'lpadmin', 'cdrom', 'dip', 'users')
+
+
+def installed_packages(candidates, status_of) -> list[str]:
+    return [p for p in candidates if status_of(p).split()[-1:] == ['installed']]
+
+
+def existing_groups(wanted, group_text: str) -> list[str]:
+    have = {line.split(':', 1)[0] for line in group_text.splitlines() if line.strip()}
+    return [g for g in wanted if g in have]
+
+
 def finalize(root: Path, account_path: Path) -> None:
     if root.resolve() != Path('/target') or not os.path.ismount(root) or os.geteuid() != 0:
         raise RuntimeError('Finalization requires the mounted Curtin target.')
@@ -50,10 +70,11 @@ def finalize(root: Path, account_path: Path) -> None:
     if not HASH_RE.fullmatch(account['password_hash']):
         raise ValueError('A valid password hash is required.')
     configure_files(root, account)
-    def target(*cmd, input=None):
+    def target(*cmd, input=None, check=True, capture=False):
         return subprocess.run(['curtin', 'in-target', '--target', str(root), '--', *cmd],
-                              input=input, text=True, check=True, timeout=1800)
-    target('useradd', '-m', '-s', '/bin/bash', '-c', account['display_name'], '-G', 'sudo,adm,video,audio,plugdev', account['username'])
+                              input=input, text=True, check=check, timeout=1800, capture_output=capture)
+    groups = existing_groups(USER_GROUPS, (root / 'etc/group').read_text())
+    target('useradd', '-m', '-s', '/bin/bash', '-c', account['display_name'], '-G', ','.join(groups), account['username'])
     # Hash travels only over stdin; Curtin's argv log contains no password material.
     target('chpasswd', '-e', input=account['username'] + ':' + account['password_hash'] + '\n')
     target('passwd', '-l', 'root')
@@ -63,7 +84,12 @@ def finalize(root: Path, account_path: Path) -> None:
         atomic_write(desktop / (name + '.desktop'), f'[Desktop Entry]\nType=Link\nName={name}\nIcon={icon}\nURL={url}\n', 0o755)
     target('chown', '-R', account['username'] + ':' + account['username'], '/home/' + account['username'])
     target('locale-gen', 'en_CA.UTF-8', 'fr_CA.UTF-8')
-    target('apt-get', '-y', 'purge', 'casper', 'calamares', 'calamares-settings-kubuntu')
+    def status_of(pkg):
+        out = target('dpkg-query', '-W', '-f=${Status}', pkg, check=False, capture=True)
+        return out.stdout if out.returncode == 0 else ''
+    doomed = installed_packages(PURGE_CANDIDATES, status_of)
+    if doomed:
+        target('apt-get', '-y', 'purge', *doomed)
     target('update-initramfs', '-u', '-k', 'all')
     target('update-grub')
     atomic_write(root / 'etc/memex/os-installed', 'ok\n', 0o644)

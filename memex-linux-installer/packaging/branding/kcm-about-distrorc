@@ -1,0 +1,5 @@
+[General]
+Name=MemXOS
+Variant=based on Kubuntu 26.04 LTS
+Website=https://www.memoryexpress.com
+LogoPath=/usr/share/memxos/memxos-logo.png
