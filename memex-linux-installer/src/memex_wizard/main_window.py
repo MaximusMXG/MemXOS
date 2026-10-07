@@ -37,6 +37,7 @@ from memex_installer.models import (
     LinuxSizePreset,
     ProfileId,
 )
+from memex_installer.store import DEFAULT_TIMEZONE, Store, load_store
 from memex_installer.version import PRODUCT_VERSION
 from memex_wizard.pages.account import AccountPage
 from memex_wizard.pages.confirm import ConfirmPage
@@ -49,7 +50,8 @@ FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, demo: bool = False, fixture_name: str = "disks_dual_two.json") -> None:
+    def __init__(self, demo: bool = False, fixture_name: str = "disks_dual_two.json",
+                 store_path: Path | None = None, store: Store | None = None) -> None:
         super().__init__()
         self.demo = demo
         self.install_enabled = not demo and os.geteuid() == 0 and live_available()
@@ -59,6 +61,16 @@ class MainWindow(QMainWindow):
         self.engine_log_offset = 0
         self.install_session = None
         self.lang = "en"
+        self.store_error = False
+        try:
+            if store is not None:
+                self.store = store
+            elif store_path is None and demo:
+                self.store = Store()
+            else:
+                self.store = load_store(store_path) if store_path else load_store()
+        except ValueError:
+            self.store, self.store_error = Store(), True
         self.profile = ProfileId.HOME
         self.disks: list[DiskInfo] = []
         self.selected_disk_id = ""
@@ -75,6 +87,9 @@ class MainWindow(QMainWindow):
 
         self.version_label = QLabel(PRODUCT_VERSION)
         self.layout.addWidget(self.version_label)
+        self.store_label = QLabel()
+        self.store_label.setWordWrap(True)
+        self.layout.addWidget(self.store_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
@@ -147,8 +162,20 @@ class MainWindow(QMainWindow):
             if hasattr(page, "retranslate"):
                 page.retranslate()
 
+    def store_text(self) -> str:
+        if self.store_error:
+            return t(self.lang, "store_invalid")
+        name = self.store.name or t(self.lang, "store_unset")
+        tz = self.store.timezone
+        if not self.store.name and tz == DEFAULT_TIMEZONE:
+            tz = t(self.lang, "store_tz_default").format(tz=tz)
+        return t(self.lang, "store_line").format(name=name, tz=tz)
+
     def _update_nav(self) -> None:
         idx = self.stack.currentIndex()
+        self.store_label.setText(self.store_text())
+        self.store_label.setStyleSheet("color: #b00020; font-weight: bold;" if self.store_error else "")
+        self.store_label.setVisible(idx in (0, self.stack.count() - 1))
         self.back_btn.setEnabled(idx > 0)
         if idx == self.stack.count() - 1:
             self.next_btn.setText(t(self.lang, "install" if self.install_enabled else "preview"))
@@ -158,6 +185,8 @@ class MainWindow(QMainWindow):
         else:
             self.next_btn.setText(t(self.lang, "next"))
             self.next_btn.setEnabled(True)
+        if self.store_error:
+            self.next_btn.setEnabled(False)
 
     def go_back(self) -> None:
         idx = self.stack.currentIndex()
@@ -193,7 +222,7 @@ class MainWindow(QMainWindow):
         )
 
     def _install(self) -> None:
-        if not self.confirm_page.can_install():
+        if self.store_error or not self.confirm_page.can_install():
             return
         try:
             answers = self.build_answers()
