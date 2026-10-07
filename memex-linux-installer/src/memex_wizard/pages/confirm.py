@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
 from html import escape
 
 from memex_installer.i18n_ui import t
@@ -19,14 +19,45 @@ class ConfirmPage(QWidget):
         self.summary.setWordWrap(True)
         self.summary.setStyleSheet("font-size: 20px;")
         layout.addWidget(self.summary)
+        self.dual_note = QLabel()
+        self.dual_note.setWordWrap(True)
+        self.dual_note.setStyleSheet("color: #b35900; font-weight: bold;")
+        layout.addWidget(self.dual_note)
+        self.erase_ack = QCheckBox()
+        self.erase_ack.setStyleSheet("color: #b00020; font-weight: bold;")
+        self.erase_ack.toggled.connect(lambda _: self.wizard._update_nav())
+        layout.addWidget(self.erase_ack)
+        self._ack_key = None
         layout.addStretch()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
         self._refresh()
 
+    def _disk(self):
+        return next((d for d in self.wizard.disks if d.id == self.wizard.selected_disk_id), None)
+
+    def needs_erase_ack(self) -> bool:
+        disk = self._disk()
+        return bool(disk and disk.has_windows and self.wizard.mode.value == "linux_only")
+
+    def can_install(self) -> bool:
+        return not self.needs_erase_ack() or self.erase_ack.isChecked()
+
     def _refresh(self) -> None:
-        disk = next((d for d in self.wizard.disks if d.id == self.wizard.selected_disk_id), None)
+        disk = self._disk()
+        key = (self.wizard.selected_disk_id, self.wizard.mode)
+        if key != self._ack_key:
+            self._ack_key = key
+            self.erase_ack.setChecked(False)
+        need = self.needs_erase_ack()
+        self.erase_ack.setVisible(need)
+        self.erase_ack.setText(t(self.wizard.lang, "win_erase_confirm"))
+        dual = self.wizard.mode.value == "dual_boot"
+        self.dual_note.setVisible(dual)
+        if dual and disk:
+            two = not disk.has_windows
+            self.dual_note.setText(t(self.wizard.lang, "dual_two_summary" if two else "dual_summary").format(disk=disk.model))
         model = disk.model if disk else "?"
         size = _fmt_size(disk.size_bytes) if disk else "?"
         lang = self.wizard.lang

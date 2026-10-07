@@ -152,8 +152,12 @@ class MainWindow(QMainWindow):
         self.back_btn.setEnabled(idx > 0)
         if idx == self.stack.count() - 1:
             self.next_btn.setText(t(self.lang, "install" if self.install_enabled else "preview"))
+            self.confirm_page._refresh()
+            running = self.engine_process is not None and self.engine_process.state() != QProcess.ProcessState.NotRunning
+            self.next_btn.setEnabled(self.confirm_page.can_install() and not running)
         else:
             self.next_btn.setText(t(self.lang, "next"))
+            self.next_btn.setEnabled(True)
 
     def go_back(self) -> None:
         idx = self.stack.currentIndex()
@@ -189,6 +193,8 @@ class MainWindow(QMainWindow):
         )
 
     def _install(self) -> None:
+        if not self.confirm_page.can_install():
+            return
         try:
             answers = self.build_answers()
             # Keep the confirmed identity, then rediscover before building a live preview.

@@ -1,5 +1,10 @@
+from html import escape
+
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -18,6 +23,28 @@ def _fmt_size(num: int) -> str:
     return f"{gb:.0f} GB"
 
 
+def confirm_dual_boot(parent, lang: str) -> bool:
+    """Modal dual-boot warning; OK stays disabled until 'I understand' is ticked."""
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(t(lang, "dual_warn_title"))
+    box = QVBoxLayout(dlg)
+    items = t(lang, "dual_warn_items").split("|")
+    body = QLabel("<ul>" + "".join(f"<li>{escape(i)}</li>" for i in items) + "</ul>")
+    body.setWordWrap(True)
+    body.setStyleSheet("color: #b35900;")
+    box.addWidget(body)
+    ack = QCheckBox(t(lang, "dual_warn_ack"))
+    box.addWidget(ack)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+    ok.setEnabled(False)
+    ack.toggled.connect(ok.setEnabled)
+    buttons.accepted.connect(dlg.accept)
+    buttons.rejected.connect(dlg.reject)
+    box.addWidget(buttons)
+    return dlg.exec() == QDialog.DialogCode.Accepted
+
+
 class DiskPage(QWidget):
     def __init__(self, wizard) -> None:
         super().__init__()
@@ -27,16 +54,28 @@ class DiskPage(QWidget):
         layout.addWidget(self.title)
         self.list = QListWidget()
         layout.addWidget(self.list)
+        self.windows_warning = QLabel()
+        self.windows_warning.setWordWrap(True)
+        self.windows_warning.setStyleSheet("color: #b00020; font-weight: bold; font-size: 16px;")
+        self.windows_warning.hide()
+        layout.addWidget(self.windows_warning)
+        self.advanced = QCheckBox()
+        layout.addWidget(self.advanced)
+        self.advanced_box = QWidget()
+        adv = QVBoxLayout(self.advanced_box)
+        adv.setContentsMargins(0, 0, 0, 0)
+        self.advanced_box.hide()
+        layout.addWidget(self.advanced_box)
         self.linux_only = QRadioButton()
         self.dual_boot = QRadioButton()
         self.mode_group = QButtonGroup(self)
         self.mode_group.addButton(self.linux_only)
         self.mode_group.addButton(self.dual_boot)
         self.linux_only.setChecked(True)
-        layout.addWidget(self.linux_only)
-        layout.addWidget(self.dual_boot)
+        adv.addWidget(self.linux_only)
+        adv.addWidget(self.dual_boot)
         self.size_label = QLabel()
-        layout.addWidget(self.size_label)
+        adv.addWidget(self.size_label)
         self.size_half = QRadioButton()
         self.size_100 = QRadioButton()
         self.size_rest = QRadioButton()
@@ -45,13 +84,29 @@ class DiskPage(QWidget):
             self.size_group.addButton(btn)
         self.size_100.setChecked(True)
         for btn in (self.size_half, self.size_100, self.size_rest):
-            layout.addWidget(btn)
+            adv.addWidget(btn)
         self.warning = QLabel()
         self.warning.setWordWrap(True)
         layout.addWidget(self.warning)
         layout.addStretch()
         self.list.currentItemChanged.connect(self._refresh_options)
-        self.dual_boot.toggled.connect(self._refresh_options)
+        self.dual_boot.toggled.connect(self._on_dual_toggled)
+        self.advanced.toggled.connect(self._on_advanced_toggled)
+
+    def _ask_dual_boot(self) -> bool:
+        return confirm_dual_boot(self, self.wizard.lang)
+
+    def _on_advanced_toggled(self, on: bool) -> None:
+        self.advanced_box.setVisible(on)
+        if not on:
+            self.linux_only.setChecked(True)
+            self.size_100.setChecked(True)
+        self._refresh_options()
+
+    def _on_dual_toggled(self, on: bool) -> None:
+        if on and not self._ask_dual_boot():
+            self.linux_only.setChecked(True)  # Cancel reverts to Linux only
+        self._refresh_options()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
@@ -88,6 +143,10 @@ class DiskPage(QWidget):
         for btn in (self.size_half, self.size_100, self.size_rest, self.size_label):
             btn.setVisible(same_disk)
 
+        erase = bool(disk and disk.has_windows and not self.dual_boot.isChecked())
+        self.windows_warning.setText(t(self.wizard.lang, "win_erase_warning"))
+        self.windows_warning.setVisible(erase)
+
         self.warning.clear()
         if self.dual_boot.isChecked() and disk and not disk.has_windows:
             any_windows = any(d.has_windows for d in self.wizard.disks)
@@ -99,6 +158,7 @@ class DiskPage(QWidget):
         self.title.setText(t(self.wizard.lang, "disk_title"))
         self.linux_only.setText(t(self.wizard.lang, "linux_only"))
         self.dual_boot.setText(t(self.wizard.lang, "dual_boot"))
+        self.advanced.setText(t(self.wizard.lang, "advanced_options"))
         self.size_half.setText(t(self.wizard.lang, "size_half"))
         self.size_100.setText(t(self.wizard.lang, "size_100"))
         self.size_rest.setText(t(self.wizard.lang, "size_rest"))

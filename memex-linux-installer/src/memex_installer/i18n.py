@@ -89,12 +89,12 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
         "en": {
             "title": "Waiting for network",
             "body": "Setup needs ethernet or internet to install drivers and apps.",
-            "action": "Plug in ethernet. This screen will continue automatically.",
+            "action": "Plug in an ethernet cable or connect to Wi-Fi. This screen will continue automatically.",
         },
         "fr": {
             "title": "En attente du réseau",
             "body": "La configuration a besoin d'Internet pour installer les pilotes et les applications.",
-            "action": "Branchez le câble Ethernet. Cet écran continuera automatiquement.",
+            "action": "Branchez un câble Ethernet ou connectez-vous au Wi-Fi. Cet écran continuera automatiquement.",
         },
     },
     "ME-STUCK": {
