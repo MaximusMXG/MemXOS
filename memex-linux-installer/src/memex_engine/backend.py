@@ -17,6 +17,7 @@ from memex_installer.errors import ErrorCode, MemexError
 from memex_installer.models import Answers, Language
 from memex_installer.preflight import run_preflight
 from memex_installer.secure_io import atomic_write, password_hash
+from memex_installer.store import load_store
 
 MEDIA = Path('/cdrom/casper/filesystem.squashfs')
 RUNTIME = Path('/run/memex-install')
@@ -108,7 +109,8 @@ def build_config(answers, plan, disk, *, partitions=None, target=Path('/target')
     metadata = {'profile': answers.profile.value, 'language': answers.language.value,
                 'username': answers.username, 'display_name': answers.display_name,
                 'hostname': answers.hostname, 'password_hash': password_hash(answers.password),
-                'dual_boot': answers.mode.value == 'dual_boot'}
+                'dual_boot': answers.mode.value == 'dual_boot',
+                'timezone': load_store().timezone}
     # Account metadata is passed separately via a private tmpfs file, not embedded in Curtin logs.
     config = {
         'install': {'target': str(target), 'save_install_config': False,

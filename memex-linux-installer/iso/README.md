@@ -57,6 +57,28 @@ sudo bash iso/build.sh --base-iso /path/to/kubuntu-26.04.1-desktop-amd64.iso \
   --output /path/to/output/ME-Linux-2026.09.2-RC1.iso
 ```
 
+## Store settings and timezone
+
+Each ISO carries one store's settings in `/etc/memex/store.json`. Build one ISO per
+timezone with `--store-timezone` (IANA name, validated at build time; default
+`America/Edmonton` with a printed notice) and optionally `--store-name`, which is
+also appended to the default output filename:
+
+```bash
+sudo bash iso/build.sh --store-timezone America/Vancouver --store-name "Burnaby"
+```
+
+| Province | `--store-timezone` |
+|---|---|
+| Alberta | `America/Edmonton` |
+| British Columbia | `America/Vancouver` |
+| Saskatchewan | `America/Regina` |
+| Manitoba | `America/Winnipeg` |
+| Ontario | `America/Toronto` |
+
+The installer writes this zone to the customer OS. Dual-boot note: Windows keeps the
+hardware clock in local time; Linux stays on UTC and is deliberately left unchanged.
+
 Existing output images are never overwritten. Build workspaces are retained for
 diagnosis. The script attempts to unmount its own mounts on exit. If a run fails,
 review the terminal log and the printed build workspace before deleting anything.

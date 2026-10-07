@@ -1,10 +1,40 @@
+import os
 from pathlib import Path
+
+import pytest
 from memex_engine.finalize import configure_files
+
+
+def _zone(root, tz):
+    path = root / 'usr/share/zoneinfo' / tz
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b'TZif')
+
+
+def _account(**extra):
+    return {'profile': 'gaming', 'language': 'en', 'username': 'a', 'hostname': 'h', 'dual_boot': False, **extra}
+
+
+def test_configure_files_uses_store_timezone(tmp_path):
+    _zone(tmp_path, 'America/Vancouver')
+    configure_files(tmp_path, _account(timezone='America/Vancouver'))
+    assert (tmp_path / 'etc/timezone').read_text() == 'America/Vancouver\n'
+    assert os.readlink(tmp_path / 'etc/localtime') == '/usr/share/zoneinfo/America/Vancouver'
+
+
+def test_configure_files_defaults_and_rejects_bad_timezone(tmp_path):
+    _zone(tmp_path, 'America/Edmonton')
+    configure_files(tmp_path, _account())
+    assert (tmp_path / 'etc/timezone').read_text() == 'America/Edmonton\n'
+    for bad in ('America/Nowhere', '../../etc/passwd', 'x'):
+        with pytest.raises(ValueError):
+            configure_files(tmp_path, _account(timezone=bad))
 
 
 def test_finalization_enables_service_and_removes_live_autologin(tmp_path):
     root = tmp_path / 'target'
     (root / 'etc/sddm.conf.d').mkdir(parents=True)
+    _zone(root, 'America/Edmonton')
     (root / 'etc/sddm.conf.d/live.conf').write_text('[Autologin]\nUser=kubuntu\nSession=plasma\n[Theme]\nCurrent=breeze\n')
     configure_files(root, {'profile': 'gaming', 'language': 'fr', 'username': 'alex',
                           'hostname': 'alex-pc', 'dual_boot': True})

@@ -9,6 +9,7 @@ from pathlib import Path
 from memex_engine.seed import seed_target
 from memex_installer.models import Language, ProfileId
 from memex_installer.secure_io import HASH_RE, atomic_write
+from memex_installer.store import DEFAULT_TIMEZONE, validate_timezone
 
 
 def configure_files(root: Path, account: dict) -> None:
@@ -22,10 +23,11 @@ def configure_files(root: Path, account: dict) -> None:
     atomic_write(root / 'etc/hosts', f"127.0.0.1 localhost\n127.0.1.1 {account['hostname']}\n::1 localhost ip6-localhost ip6-loopback\n", 0o644)
     atomic_write(root / 'etc/default/locale', f'LANG={locale}\n', 0o644)
     atomic_write(root / 'etc/default/keyboard', f'XKBMODEL="pc105"\nXKBLAYOUT="{keyboard}"\nXKBVARIANT=""\nXKBOPTIONS=""\n', 0o644)
-    atomic_write(root / 'etc/timezone', 'America/Edmonton\n', 0o644)
+    tz = validate_timezone(account.get('timezone', DEFAULT_TIMEZONE), root)
+    atomic_write(root / 'etc/timezone', tz + '\n', 0o644)
     zone = root / 'etc/localtime'
     zone.unlink(missing_ok=True)
-    zone.symlink_to('/usr/share/zoneinfo/America/Edmonton')
+    zone.symlink_to('/usr/share/zoneinfo/' + tz)
     atomic_write(root / 'etc/default/grub.d/90-memex.cfg',
                  'GRUB_TIMEOUT_STYLE=menu\nGRUB_TIMEOUT=5\nGRUB_DISABLE_OS_PROBER=' + ('false' if account['dual_boot'] else 'true') + '\n', 0o644)
     (root / 'etc/memex/live-build.json').unlink(missing_ok=True)
