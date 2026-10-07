@@ -59,11 +59,6 @@ def main():
     canvas.paste(emblem, ((side - emblem.width) // 2, (side - emblem.height) // 2))
     canvas.resize((SIZE, SIZE), Image.LANCZOS).save(BRANDING / 'memxos-logo.png', optimize=True)
 
-    word = rgba.crop(rgba.getbbox())
-    if word.width > 1024:
-        word = word.resize((1024, round(word.height * 1024 / word.width)), Image.LANCZOS)
-    word.save(BRANDING / 'mepc-wordmark.png', optimize=True)
-
 
 if __name__ == '__main__':
     main()
