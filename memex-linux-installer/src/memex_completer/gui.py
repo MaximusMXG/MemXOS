@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,25 @@ def _language() -> str:
     if path.exists():
         return path.read_text(encoding="utf-8").strip() or "en"
     return "en"
+
+
+def ack_path() -> Path:
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "memex-setup-acknowledged"
+
+
+def should_show(state: SetupState, ack: Path | None = None) -> bool:
+    # Autostart runs every login; once setup is done and the success screen was dismissed, stay away.
+    return not (state.is_complete() and (ack or ack_path()).exists())
+
+
+def acknowledge(ack: Path | None = None) -> None:
+    path = ack or ack_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ok\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 class CompleterWindow(QMainWindow):
@@ -54,7 +74,7 @@ class CompleterWindow(QMainWindow):
         self.restart_btn.clicked.connect(lambda: self._control(["reboot"]))
         self.restart_btn.hide()
         self.done_btn = QPushButton(t(self.lang, "done"))
-        self.done_btn.clicked.connect(self.close)
+        self.done_btn.clicked.connect(self._done)
         self.done_btn.hide()
         layout.addWidget(self.restart_btn)
         layout.addWidget(self.done_btn)
@@ -76,6 +96,10 @@ class CompleterWindow(QMainWindow):
         if code != 0:
             QMessageBox.critical(self, t(self.lang, "setup_title"), t(self.lang, "control_failed"))
         self.refresh()
+
+    def _done(self):
+        acknowledge()
+        self.close()
 
     def _retry(self):
         self._control(["restart", "memex-setup.service"])
@@ -127,6 +151,8 @@ class CompleterWindow(QMainWindow):
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not should_show(SetupState()):
+        return 0
     app = QApplication(argv or sys.argv)
     window = CompleterWindow()
     window.show()

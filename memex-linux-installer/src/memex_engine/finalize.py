@@ -43,6 +43,19 @@ def configure_files(root: Path, account: dict) -> None:
     machine_id.symlink_to('/etc/machine-id')
 
 
+PURGE_CANDIDATES = ('casper', 'calamares', 'calamares-settings-kubuntu')
+USER_GROUPS = ('sudo', 'adm', 'video', 'audio', 'plugdev', 'lpadmin', 'cdrom', 'dip', 'users')
+
+
+def installed_packages(candidates, status_of) -> list[str]:
+    return [p for p in candidates if status_of(p).split()[-1:] == ['installed']]
+
+
+def existing_groups(wanted, group_text: str) -> list[str]:
+    have = {line.split(':', 1)[0] for line in group_text.splitlines() if line.strip()}
+    return [g for g in wanted if g in have]
+
+
 def finalize(root: Path, account_path: Path) -> None:
     if root.resolve() != Path('/target') or not os.path.ismount(root) or os.geteuid() != 0:
         raise RuntimeError('Finalization requires the mounted Curtin target.')
@@ -50,10 +63,11 @@ def finalize(root: Path, account_path: Path) -> None:
     if not HASH_RE.fullmatch(account['password_hash']):
         raise ValueError('A valid password hash is required.')
     configure_files(root, account)
-    def target(*cmd, input=None):
+    def target(*cmd, input=None, check=True, capture=False):
         return subprocess.run(['curtin', 'in-target', '--target', str(root), '--', *cmd],
-                              input=input, text=True, check=True, timeout=1800)
-    target('useradd', '-m', '-s', '/bin/bash', '-c', account['display_name'], '-G', 'sudo,adm,video,audio,plugdev', account['username'])
+                              input=input, text=True, check=check, timeout=1800, capture_output=capture)
+    groups = existing_groups(USER_GROUPS, (root / 'etc/group').read_text())
+    target('useradd', '-m', '-s', '/bin/bash', '-c', account['display_name'], '-G', ','.join(groups), account['username'])
     # Hash travels only over stdin; Curtin's argv log contains no password material.
     target('chpasswd', '-e', input=account['username'] + ':' + account['password_hash'] + '\n')
     target('passwd', '-l', 'root')
@@ -63,7 +77,12 @@ def finalize(root: Path, account_path: Path) -> None:
         atomic_write(desktop / (name + '.desktop'), f'[Desktop Entry]\nType=Link\nName={name}\nIcon={icon}\nURL={url}\n', 0o755)
     target('chown', '-R', account['username'] + ':' + account['username'], '/home/' + account['username'])
     target('locale-gen', 'en_CA.UTF-8', 'fr_CA.UTF-8')
-    target('apt-get', '-y', 'purge', 'casper', 'calamares', 'calamares-settings-kubuntu')
+    def status_of(pkg):
+        out = target('dpkg-query', '-W', '-f=${Status}', pkg, check=False, capture=True)
+        return out.stdout if out.returncode == 0 else ''
+    doomed = installed_packages(PURGE_CANDIDATES, status_of)
+    if doomed:
+        target('apt-get', '-y', 'purge', *doomed)
     target('update-initramfs', '-u', '-k', 'all')
     target('update-grub')
     atomic_write(root / 'etc/memex/os-installed', 'ok\n', 0o644)

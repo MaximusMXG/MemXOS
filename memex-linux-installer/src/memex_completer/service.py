@@ -2,9 +2,10 @@
 from __future__ import annotations
 import argparse
 import json
-import socket
+import shutil
 import subprocess
 import time
+import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,12 +19,38 @@ from memex_installer.secure_io import atomic_write
 StepFn = Callable[[SetupState], None]
 
 
-def network_up() -> bool:
+PROBE_URL = 'http://connectivity-check.ubuntu.com/'
+
+
+def _nmcli_connectivity() -> str | None:
+    if not shutil.which('nmcli'):
+        return None
     try:
-        with socket.create_connection(('archive.ubuntu.com', 443), timeout=5):
-            return True
-    except OSError:
+        out = subprocess.run(['nmcli', '-t', 'networking', 'connectivity', 'check'],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def _http_probe(url=PROBE_URL, timeout=5) -> bool:
+    # Captive portals answer 200/302; only a genuine 204 means open internet.
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(url, timeout=timeout) as resp:
+            return resp.status == 204
+    except (OSError, ValueError):
         return False
+
+
+def network_up(nmcli=_nmcli_connectivity, http=_http_probe) -> bool:
+    if nmcli() == 'full':
+        return True
+    return http()
 
 
 def step_gpu(state):
@@ -74,13 +101,21 @@ def _install_special(name, state):
         raise ValueError(f'Unknown required installer: {name}')
 
 
+def preseed_text(profile) -> str:
+    lines = ['ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula boolean true']
+    if profile == ProfileId.GAMING:
+        for owner in ('steam', 'steam-installer'):
+            lines += [f'{owner} {owner}/question select I AGREE', f'{owner} {owner}/license note']
+    return '\n'.join(lines) + '\n'
+
+
 def step_packages(state, profile, profiles_dir=None):
     packages = load_profile(profile, profiles_dir)
     if profile == ProfileId.GAMING:
         run_command(state, ['dpkg', '--add-architecture', 'i386'])
         run_command(state, ['apt-get', '-o', 'APT::Update::Error-Mode=any', 'update'])
     # Preseed package questions for the fixed application profiles.
-    run_command(state, ['debconf-set-selections'], input='ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula boolean true\nsteam steam/question select I AGREE\nsteam steam/license note\n')
+    run_command(state, ['debconf-set-selections'], input=preseed_text(profile))
     if packages.apt:
         run_command(state, ['apt-get', '-y', 'install', *packages.apt])
     if packages.flatpak:
