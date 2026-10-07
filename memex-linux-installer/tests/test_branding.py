@@ -40,6 +40,29 @@ def test_fastfetch_config_parses_and_references_logo():
     assert '{pretty-name}' in os_module['format'] and 'MemXOS 2026.09' in os_module['format']
 
 
+def test_logo_png_is_256_rgba_with_transparent_corners():
+    pil = pytest.importorskip('PIL.Image')
+    img = pil.open(BRANDING / 'memxos-logo.png')
+    assert img.size == (256, 256) and img.mode == 'RGBA'
+    for corner in ((0, 0), (255, 0), (0, 255), (255, 255)):
+        assert img.getpixel(corner)[3] == 0
+    assert img.getbbox() is not None
+
+
+def test_fastfetch_colour_is_truecolor():
+    text = (BRANDING / 'fastfetch/config.jsonc').read_text().replace('@MEMXOS_VERSION@', '1')
+    config = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+    m = re.fullmatch(r'38;2;(\d{1,3});(\d{1,3});(\d{1,3})', config['logo']['color']['1'])
+    assert m and all(int(v) <= 255 for v in m.groups())
+
+
+def test_kcm_logo_path_points_to_installed_file():
+    line = next(l for l in (BRANDING / 'kcm-about-distrorc').read_text().splitlines() if l.startswith('LogoPath='))
+    assert line.split('=', 1)[1] == '/usr/share/memxos/memxos-logo.png'
+    assert (BRANDING / 'memxos-logo.png').exists()
+    assert "'memxos-logo.png': 'usr/share/memxos/memxos-logo.png'" in (ROOT / 'packaging/build_deb.py').read_text()
+
+
 def test_brand_version_matches_product_version():
     assert re.fullmatch(r'\d{4}\.\d{2}', build_deb.brand_version())
 
@@ -50,6 +73,8 @@ def test_deb_contains_branding(tmp_path):
     deb = build_deb.build(tmp_path)
     listing = subprocess.run(['dpkg-deb', '-c', str(deb)], capture_output=True, text=True, check=True).stdout
     for path in ('etc/xdg/fastfetch/config.jsonc', 'etc/xdg/kcm-about-distrorc',
-                 'usr/share/memxos/memxos-logo.txt', 'usr/share/memxos/memxos-logo-large.txt'):
+                 'usr/share/memxos/memxos-logo.txt', 'usr/share/memxos/memxos-logo-large.txt',
+                 'usr/share/memxos/memxos-logo.png'):
         assert './' + path in listing
+    assert 'mepc-wordmark' not in listing and 'mepc-logo-source' not in listing
     assert 'etc/os-release' not in listing

@@ -42,7 +42,7 @@ def build(output: Path):
         opt = staging / 'opt/memex-linux-installer'
         for directory in ('src', 'profiles', 'packaging', 'tests/fixtures'):
             shutil.copytree(ROOT / directory, opt / directory,
-                            ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                            ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'mepc-logo-source.png', 'mepc-wordmark.png'))
         with tarfile.open(source_tar) as archive:
             archive.extractall(Path(td) / 'source', filter='data')
         upstream = next((Path(td) / 'source').iterdir())
@@ -79,6 +79,7 @@ def build(output: Path):
             'kcm-about-distrorc': 'etc/xdg/kcm-about-distrorc',
             'memxos-logo.txt': 'usr/share/memxos/memxos-logo.txt',
             'memxos-logo-large.txt': 'usr/share/memxos/memxos-logo-large.txt',
+            'memxos-logo.png': 'usr/share/memxos/memxos-logo.png',
         }
         for source, destination in branding.items():
             dest = staging / destination

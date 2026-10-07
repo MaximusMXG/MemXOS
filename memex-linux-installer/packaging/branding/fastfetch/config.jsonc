@@ -5,8 +5,8 @@
   "logo": {
     "type": "file",
     "source": "/usr/share/memxos/memxos-logo.txt",
-    // Brand colours can be set here (named colour or e.g. "38;2;R;G;B").
-    "color": {"1": "bright_white"}
+    // Brand colours can be set here (named colour or truecolor "38;2;R;G;B"); gold sampled from the MEPC emblem.
+    "color": {"1": "38;2;241;190;72"}
   },
   "modules": [
     "title",
