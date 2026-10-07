@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from memex_installer.errors import ErrorCode, error_message
+from memex_installer.disks import detect_storage_mode
 from memex_installer.i18n_ui import t
 from memex_installer.models import InstallMode, LinuxSizePreset
 
@@ -52,6 +53,12 @@ class DiskPage(QWidget):
         layout = QVBoxLayout(self)
         self.title = QLabel()
         layout.addWidget(self.title)
+        self.raid_banner = QLabel()
+        self.raid_banner.setWordWrap(True)
+        self.raid_banner.setStyleSheet("color: #b00020; font-weight: bold; background: #fdecea; padding: 8px;")
+        self.raid_banner.hide()
+        layout.addWidget(self.raid_banner)
+        self.storage_mode = None
         self.list = QListWidget()
         layout.addWidget(self.list)
         self.windows_warning = QLabel()
@@ -112,7 +119,22 @@ class DiskPage(QWidget):
         super().showEvent(event)
         self._populate()
 
+    def _detect_mode(self) -> str | None:
+        if self.wizard.demo:  # never probe real hardware in demo; fixtures supply storage_mode
+            return getattr(self.wizard, "storage_mode", None)
+        return detect_storage_mode()
+
+    def _refresh_banner(self) -> None:
+        self.storage_mode = self._detect_mode()
+        if self.storage_mode:
+            msg = error_message(ErrorCode.RAID_MODE, self.wizard.lang)
+            self.raid_banner.setText(
+                f"<b>{escape(msg['title'])}</b> ({msg['code']})<br>{escape(msg['body'])}<br>"
+                + escape(msg["action"]).replace("\n", "<br>"))
+        self.raid_banner.setVisible(bool(self.storage_mode))
+
     def _populate(self) -> None:
+        self._refresh_banner()
         current = self._selected_disk()
         selected_id = current.id if current else self.wizard.selected_disk_id
         self.list.clear()

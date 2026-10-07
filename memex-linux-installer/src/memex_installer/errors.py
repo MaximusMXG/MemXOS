@@ -14,6 +14,7 @@ class ErrorCode(Enum):
     STUCK = "ME-STUCK"
     STEP_FAIL = "ME-STEP-FAIL"
     HIBERNATED = "ME-WINDOWS-HIBERNATED"
+    RAID_MODE = "ME-RAID-MODE"
     TWO_DISK = "ME-TWO-DISK"  # warning, not a hard stop
 
 

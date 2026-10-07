@@ -1,6 +1,7 @@
 """Read-only disk inventory and conservative Windows detection."""
 from __future__ import annotations
 import json
+import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,47 @@ def _default_runner(cmd: list[str]) -> str:
 
 def disks_from_snapshot(data: dict[str, Any]) -> list[DiskInfo]:
     return [DiskInfo(**item) for item in data.get('disks', [])]
+
+
+def storage_mode_from_snapshot(data: dict[str, Any]) -> str | None:
+    mode = data.get('storage_mode')
+    return mode if mode in STORAGE_MODES else None
+
+
+# Best-known Intel VMD device ids (not exhaustive).
+VMD_DEVICE_IDS = frozenset({0x9a0b, 0x467f, 0xa77f, 0x7d0b, 0xad0b, 0x28c0, 0x201d, 0x09ab})
+STORAGE_MODES = ('vmd', 'intel_raid')
+
+
+def _read_hex(path: Path) -> int:
+    return int(path.read_text().strip(), 16)
+
+
+def detect_storage_mode(sysfs_root: Path = Path('/sys')) -> str | None:
+    """Read-only: 'vmd' (Intel VMD), 'intel_raid' (SATA in RAID/RST mode) or None. Never raises."""
+    try:
+        root = Path(sysfs_root)
+        driver = root / 'bus/pci/drivers/vmd'
+        try:
+            if driver.is_dir() and any(re.fullmatch(r'[0-9a-f]{4}:[0-9a-f:.]+', e.name) for e in driver.iterdir()):
+                return 'vmd'
+        except OSError:
+            pass
+        raid = False
+        for dev in sorted((root / 'bus/pci/devices').iterdir()):
+            try:
+                if _read_hex(dev / 'vendor') != 0x8086:
+                    continue
+                if _read_hex(dev / 'device') in VMD_DEVICE_IDS:
+                    return 'vmd'
+                cls = _read_hex(dev / 'class') >> 8
+                if cls == 0x0104:
+                    raid = True
+            except (OSError, ValueError):
+                continue
+        return 'intel_raid' if raid else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _children(device: dict):

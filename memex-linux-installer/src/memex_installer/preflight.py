@@ -28,12 +28,14 @@ class PreflightResult:
 
 
 def run_preflight(answers: Answers, disks: list[DiskInfo], *, win_size: int | None = None,
-                  win_min: int | None = None) -> PreflightResult:
+                  win_min: int | None = None, storage_mode: str | None = None) -> PreflightResult:
     """win_size/win_min: exact Windows NTFS partition size and resize minimum (read-only inspection).
 
     Without them, same-disk sizing is estimated from the whole disk and flagged `estimated`."""
     target = find_disk(disks, answers.target_disk_id)
     if target is None:
+        if storage_mode:
+            return PreflightResult(ok=False, error=ErrorCode.RAID_MODE)
         return PreflightResult(ok=False, error=ErrorCode.DISK_GONE)
 
     if target.is_usb:

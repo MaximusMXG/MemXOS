@@ -73,6 +73,24 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
             "action": "Rebranchez le disque, puis redémarrez cette clé USB.",
         },
     },
+    "ME-RAID-MODE": {
+        "en": {
+            "title": "Storage is in RAID / Intel RST mode",
+            "body": "This PC's storage is set to Intel RST / VMD (RAID) mode, so Linux may not see the drive or can't safely use it.",
+            "action": "Linux only (wipes the drive): in BIOS/UEFI setup, change storage/SATA mode from RAID/RST/VMD to AHCI (or disable VMD), save, and reboot this USB.\n"
+                      "Dual-boot: do NOT change the BIOS yet. First boot Windows to Safe Mode once "
+                      "(admin Command Prompt: bcdedit /set {current} safeboot minimal), switch to AHCI, "
+                      "boot Windows, then run bcdedit /deletevalue {current} safeboot. Or ask a senior tech.",
+        },
+        "fr": {
+            "title": "Stockage en mode RAID / Intel RST",
+            "body": "Le stockage de ce PC est en mode Intel RST / VMD (RAID); Linux peut ne pas voir le disque ou ne peut pas l'utiliser en toute sécurité.",
+            "action": "Linux seulement (efface le disque) : dans le BIOS/UEFI, passez le mode de stockage/SATA de RAID/RST/VMD à AHCI (ou désactivez VMD), enregistrez, puis redémarrez avec cette clé USB.\n"
+                      "Double démarrage : ne changez PAS le BIOS tout de suite. Démarrez d'abord Windows en mode sans échec une fois "
+                      "(invite de commandes admin : bcdedit /set {current} safeboot minimal), passez à AHCI, "
+                      "démarrez Windows, puis exécutez bcdedit /deletevalue {current} safeboot. Ou demandez à un technicien senior.",
+        },
+    },
     "ME-INSTALL-FAIL": {
         "en": {
             "title": "Install failed",

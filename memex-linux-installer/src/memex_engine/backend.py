@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 from memex_engine.storage import parse_table, storage_config
-from memex_installer.disks import discover_disks, find_disk, windows_volume, _default_runner
+from memex_installer.disks import detect_storage_mode, discover_disks, find_disk, windows_volume, _default_runner
 from memex_installer.errors import ErrorCode, MemexError
 from memex_installer.models import Answers, Language
 from memex_installer.preflight import run_preflight
@@ -63,7 +63,8 @@ def checked_preflight(answers, disks, inspect=None):
     """Preflight using exact NTFS numbers (read-only inspection) when `inspect` is given.
 
     Returns (result, partitions); MemexError (e.g. hibernated Windows) propagates."""
-    result = run_preflight(answers, disks)
+    # Live only: a missing target on an Intel VMD/RST machine is ME-RAID-MODE, not ME-DISK-GONE.
+    result = run_preflight(answers, disks, storage_mode=detect_storage_mode() if inspect else None)
     if inspect is None or not result.ok or result.plan is None or not result.plan.shrinks_windows:
         return result, None
     partitions = inspect(find_disk(disks, answers.target_disk_id))

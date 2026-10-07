@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from memex_engine.preview import build_preview
 from memex_engine.backend import inspect_partitions, live_available
 from memex_installer.answers_io import save_answers
-from memex_installer.disks import disks_from_snapshot, discover_disks
+from memex_installer.disks import detect_storage_mode, disks_from_snapshot, discover_disks, storage_mode_from_snapshot
 from memex_installer.errors import ErrorCode, error_message
 from memex_installer.i18n_ui import t
 from memex_installer.models import (
@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
             self.store, self.store_error = Store(), True
         self.profile = ProfileId.HOME
         self.disks: list[DiskInfo] = []
+        self.storage_mode: str | None = None
         self.selected_disk_id = ""
         self.mode = InstallMode.LINUX_ONLY
         self.linux_size = LinuxSizePreset.FULL_DISK
@@ -142,14 +143,15 @@ class MainWindow(QMainWindow):
 
     def _load_disks(self, fixture_name: str) -> None:
         if self.demo:
-            path = FIXTURES / fixture_name
-            self.disks = disks_from_snapshot(json.loads(path.read_text(encoding="utf-8")))
+            data = json.loads((FIXTURES / fixture_name).read_text(encoding="utf-8"))
+            self.disks = disks_from_snapshot(data)
+            self.storage_mode = storage_mode_from_snapshot(data)
         else:
             try:
                 self.disks = discover_disks()
             except Exception:  # noqa: BLE001
                 self.disks = []
-                msg = error_message(ErrorCode.DISK_GONE, self.lang)
+                msg = error_message(ErrorCode.RAID_MODE if detect_storage_mode() else ErrorCode.DISK_GONE, self.lang)
                 QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
 
     def retranslate(self) -> None:
