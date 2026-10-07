@@ -37,6 +37,18 @@ ERRORS: dict[str, dict[str, dict[str, str]]] = {
             "action": "Choisissez une taille Linux plus petite, ou installez Linux sur un autre disque.",
         },
     },
+    "ME-WINDOWS-HIBERNATED": {
+        "en": {
+            "title": "Windows was not fully shut down",
+            "body": "Windows is hibernated (Fast Startup) or its disk was not closed cleanly, so Linux cannot safely shrink it. Nothing has been changed.",
+            "action": "In Windows, turn off Fast Startup (Control Panel > Power Options > Choose what the power buttons do), then Restart (not Shut down) Windows, run chkdsk if asked, then reboot this USB.",
+        },
+        "fr": {
+            "title": "Windows n'a pas été complètement arrêté",
+            "body": "Windows est en hibernation (démarrage rapide) ou son disque n'a pas été fermé proprement; Linux ne peut pas le réduire en toute sécurité. Rien n'a été modifié.",
+            "action": "Dans Windows, désactivez le démarrage rapide (Panneau de configuration > Options d'alimentation > Choisir l'action des boutons d'alimentation), puis Redémarrez (et non Arrêtez) Windows, lancez chkdsk si demandé, puis redémarrez sur cette clé USB.",
+        },
+    },
     "ME-USB-TARGET": {
         "en": {
             "title": "Cannot install on the USB stick",

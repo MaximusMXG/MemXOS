@@ -8,11 +8,11 @@ import sys
 from pathlib import Path
 
 from memex_engine.preview import build_preview
-from memex_engine.backend import install
+from memex_engine.backend import inspect_partitions, install
 from memex_engine.seed import seed_target
 from memex_installer.answers_io import load_answers
 from memex_installer.disks import discover_disks, disks_from_snapshot
-from memex_installer.errors import ErrorCode, error_message
+from memex_installer.errors import ErrorCode, MemexError, error_message
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         disks = (disks_from_snapshot(json.loads(args.fixture.read_text(encoding="utf-8")))
                  if args.fixture else discover_disks())
-        report = build_preview(answers, disks)
+        report = build_preview(answers, disks, None if args.fixture else inspect_partitions)
         if report["status"] == "blocked":
             print(json.dumps(report), file=sys.stderr)
             return 2
@@ -55,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except Exception as exc:  # Convert discovery, YAML and I/O failures to a safe CLI result.
         # Do not expose raw parser exceptions: they can contain customer credentials.
-        error = error_message(ErrorCode.INSTALL_FAIL, lang)
+        # Only typed MemexError codes are surfaced; everything else stays generic.
+        error = error_message(exc.code if isinstance(exc, MemexError) else ErrorCode.INSTALL_FAIL, lang)
         error["reason"] = type(exc).__name__
         print(json.dumps({"status": "blocked", "installed": False, "disk_changes": False, "error": error}), file=sys.stderr)
         return 2

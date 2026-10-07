@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 from memex_engine.storage import parse_table, storage_config
 from memex_installer.disks import discover_disks, find_disk, windows_volume, _default_runner
+from memex_installer.errors import ErrorCode, MemexError
 from memex_installer.models import Answers, Language
 from memex_installer.preflight import run_preflight
 from memex_installer.secure_io import atomic_write, password_hash
@@ -45,6 +46,32 @@ def validate_account(answers: Answers) -> None:
         raise ValueError('Invalid display name.')
 
 
+def _hibernated(text: str) -> bool:
+    """ntfsresize --info refuses hibernated / Fast Startup / dirty NTFS."""
+    text = str(text).lower()
+    return any(w in text for w in ('hibernat', 'unclean', 'inconsistent', 'chkdsk', 'dirty', 'fast restart'))
+
+
+def windows_extent(partitions):
+    """(size, resize minimum) of the single verified Windows NTFS volume, else (None, None)."""
+    found = [p for p in partitions or [] if p.windows and p.fstype == 'ntfs' and p.min_size is not None]
+    return (found[0].size, found[0].min_size) if len(found) == 1 else (None, None)
+
+
+def checked_preflight(answers, disks, inspect=None):
+    """Preflight using exact NTFS numbers (read-only inspection) when `inspect` is given.
+
+    Returns (result, partitions); MemexError (e.g. hibernated Windows) propagates."""
+    result = run_preflight(answers, disks)
+    if inspect is None or not result.ok or result.plan is None or not result.plan.shrinks_windows:
+        return result, None
+    partitions = inspect(find_disk(disks, answers.target_disk_id))
+    size, minimum = windows_extent(partitions)
+    if size is None:
+        return result, partitions  # storage_config validates the identity and fails closed
+    return run_preflight(answers, disks, win_size=size, win_min=minimum), partitions
+
+
 def inspect_partitions(disk, runner=_default_runner):
     table = json.loads(runner(['sfdisk', '--json', disk.device_path]))
     lsblk = json.loads(runner(['lsblk', '-J', '-p', '-o', 'NAME,FSTYPE', disk.device_path]))
@@ -58,9 +85,17 @@ def inspect_partitions(disk, runner=_default_runner):
     for part in parts:
         if part.fstype == 'ntfs' and windows_volume(part.path, runner):
             # Without --force, dirty/hibernated/unsupported NTFS fails before any write.
-            info = runner(['ntfsresize', '--info', '--no-progress-bar', part.path])
+            try:
+                info = runner(['ntfsresize', '--info', '--no-progress-bar', part.path])
+            except subprocess.CalledProcessError as exc:
+                text = f'{exc.stdout or ""} {exc.stderr or ""} {exc.output or ""}'
+                if _hibernated(text):
+                    raise MemexError(ErrorCode.HIBERNATED) from None
+                raise ValueError('NTFS minimum resize size could not be determined.') from None
             match = re.search(r'You might resize at (\d+) bytes', info)
             if not match:
+                if _hibernated(info):
+                    raise MemexError(ErrorCode.HIBERNATED)
                 raise ValueError('NTFS minimum resize size could not be determined.')
             part = replace(part, windows=True, min_size=int(match.group(1)))
         validated.append(part)
@@ -108,15 +143,14 @@ def install(answers: Answers, confirm_disk: str) -> int:
     with (RUNTIME / 'install.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         disks = discover_disks()
-        result = run_preflight(answers, disks)
-        if not result.ok or result.plan is None:
-            raise ValueError(result.error.value if result.error else 'Preflight failed')
         disk = find_disk(disks, answers.target_disk_id)
+        result, partitions = checked_preflight(answers, disks, inspect_partitions)
+        if not result.ok or result.plan is None:
+            raise MemexError(result.error or ErrorCode.INSTALL_FAIL)
         if not disk or not stat.S_ISBLK(Path(disk.device_path).stat().st_mode):
             raise ValueError('Target is not a block device.')
         if str(Path(disk.stable_path).resolve()) != disk.device_path:
             raise ValueError('Stable disk path no longer matches the target.')
-        partitions = inspect_partitions(disk) if result.plan.shrinks_windows else None
         config, account = build_config(answers, result.plan, disk, partitions=partitions)
         Path('/var/log/memex-install').mkdir(parents=True, exist_ok=True, mode=0o700)
         config_path, account_path = RUNTIME / 'curtin.yaml', RUNTIME / 'account.json'

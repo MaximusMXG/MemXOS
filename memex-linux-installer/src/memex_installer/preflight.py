@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from memex_installer.disks import find_disk
 from memex_installer.errors import ErrorCode
+from memex_installer.sizing import MIN_WINDOWS, linux_size_for, size_fits
 from memex_installer.models import (
     Answers,
     DiskInfo,
@@ -14,8 +15,7 @@ from memex_installer.models import (
     PartitionPlan,
 )
 
-MIN_WINDOWS_BYTES = 64 * 1024**3
-GB_100 = 100 * 1024**3
+MIN_WINDOWS_BYTES = MIN_WINDOWS
 
 
 @dataclass
@@ -24,21 +24,14 @@ class PreflightResult:
     error: ErrorCode | None = None
     warning: ErrorCode | None = None
     plan: PartitionPlan | None = None
+    estimated: bool = False  # same-disk size derived from whole-disk size, not the NTFS partition
 
 
-def _linux_bytes_for_same_disk(disk: DiskInfo, preset: LinuxSizePreset) -> int:
-    if preset == LinuxSizePreset.GB_100:
-        return GB_100
-    if preset == LinuxSizePreset.HALF:
-        return disk.size_bytes // 2
-    if preset == LinuxSizePreset.ALL_LEFTOVER:
-        # Leave minimum Windows floor; rest to Linux.
-        return max(0, disk.size_bytes - MIN_WINDOWS_BYTES)
-    # FULL_DISK on same-disk dual-boot is invalid; treat as all leftover.
-    return max(0, disk.size_bytes - MIN_WINDOWS_BYTES)
+def run_preflight(answers: Answers, disks: list[DiskInfo], *, win_size: int | None = None,
+                  win_min: int | None = None) -> PreflightResult:
+    """win_size/win_min: exact Windows NTFS partition size and resize minimum (read-only inspection).
 
-
-def run_preflight(answers: Answers, disks: list[DiskInfo]) -> PreflightResult:
+    Without them, same-disk sizing is estimated from the whole disk and flagged `estimated`."""
     target = find_disk(disks, answers.target_disk_id)
     if target is None:
         return PreflightResult(ok=False, error=ErrorCode.DISK_GONE)
@@ -69,10 +62,13 @@ def run_preflight(answers: Answers, disks: list[DiskInfo]) -> PreflightResult:
         if target.bitlocker_on:
             return PreflightResult(ok=False, error=ErrorCode.BITLOCKER)
 
-        linux_bytes = _linux_bytes_for_same_disk(target, answers.linux_size)
-        windows_remaining = target.size_bytes - linux_bytes
-        if linux_bytes <= 0 or windows_remaining < MIN_WINDOWS_BYTES:
-            return PreflightResult(ok=False, error=ErrorCode.SPACE)
+        estimated = win_size is None
+        base = target.size_bytes if estimated else win_size
+        preset = (LinuxSizePreset.ALL_LEFTOVER if answers.linux_size == LinuxSizePreset.FULL_DISK
+                  else answers.linux_size)
+        linux_bytes = linux_size_for(preset, base, win_min)
+        if not size_fits(linux_bytes, base, win_min):
+            return PreflightResult(ok=False, error=ErrorCode.SPACE, estimated=estimated)
 
         return PreflightResult(
             ok=True,
@@ -84,6 +80,7 @@ def run_preflight(answers: Answers, disks: list[DiskInfo]) -> PreflightResult:
                 linux_size_bytes=linux_bytes,
                 windows_disk_id=target.id,
             ),
+            estimated=estimated,
         )
 
     # Windows on a different disk — preferred two-drive layout

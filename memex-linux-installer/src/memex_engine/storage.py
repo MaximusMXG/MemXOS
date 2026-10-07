@@ -7,13 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from memex_installer.models import Answers, DiskInfo, LinuxSizePreset, PartitionPlan
+from memex_installer.errors import ErrorCode, MemexError
+from memex_installer.models import Answers, DiskInfo, PartitionPlan
+from memex_installer.sizing import GIB, MIB, MIN_LINUX, MIN_WINDOWS, linux_size_for, size_fits, windows_floor
 
-MIB = 1024**2
-GIB = 1024**3
 EFI_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
-MIN_LINUX = 40 * GIB
-MIN_WINDOWS = 64 * GIB
 
 
 @dataclass(frozen=True)
@@ -85,21 +83,18 @@ def storage_config(answers: Answers, plan: PartitionPlan, disk: DiskInfo,
         win, esp = candidates[0], esps[0]
         if esp.size < 100 * MIB or win.min_size is None:
             raise ValueError('EFI capacity or NTFS resize limits could not be validated.')
-        floor = max(MIN_WINDOWS, ((win.min_size + 2 * GIB + MIB - 1) // MIB) * MIB)
-        if answers.linux_size == LinuxSizePreset.GB_100:
-            linux_size = 100 * GIB
-        elif answers.linux_size == LinuxSizePreset.HALF:
-            linux_size = (win.size // (2 * MIB)) * MIB
-        elif answers.linux_size == LinuxSizePreset.ALL_LEFTOVER:
-            linux_size = ((win.size - floor) // MIB) * MIB
-        else:
+        floor = windows_floor(win.min_size)
+        linux_size = linux_size_for(answers.linux_size, win.size, win.min_size)
+        if linux_size is None:
             raise ValueError('Select a Linux size for same-disk installation.')
+        if not size_fits(linux_size, win.size, win.min_size):
+            raise MemexError(ErrorCode.SPACE)
         # Keep the new root entirely within space freed from Windows; never move recovery partitions.
         new_end = ((win.offset + win.size - linux_size) // MIB) * MIB
         new_win_size = new_end - win.offset
         linux_size = ((win.offset + win.size - new_end) // MIB) * MIB
         if new_win_size < floor or linux_size < MIN_LINUX or new_win_size >= win.size:
-            raise ValueError('Insufficient safely resizable Windows space.')
+            raise MemexError(ErrorCode.SPACE)
         for part in parts:
             entry = {'id': 'efi' if part == esp else f'existing-{part.number}',
                      'type': 'partition', 'device': 'linux-disk', 'number': part.number,

@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from memex_engine.preview import build_preview
-from memex_engine.backend import live_available
+from memex_engine.backend import inspect_partitions, live_available
 from memex_installer.answers_io import save_answers
 from memex_installer.disks import disks_from_snapshot, discover_disks
 from memex_installer.errors import ErrorCode, error_message
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
             answers = self.build_answers()
             # Keep the confirmed identity, then rediscover before building a live preview.
             disks = self.disks if self.demo else discover_disks()
-            report = build_preview(answers, disks)
+            report = build_preview(answers, disks, inspect_partitions if self.install_enabled else None)
         except Exception:
             msg = error_message(ErrorCode.INSTALL_FAIL, self.lang)
             QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
@@ -223,20 +223,32 @@ class MainWindow(QMainWindow):
         self.stack.setEnabled(True)
         self.version_label.setText(PRODUCT_VERSION)
 
-    def _engine_error(self, *_):
+    def _engine_error(self, *_, code=ErrorCode.INSTALL_FAIL):
         self._cleanup_engine()
-        msg = error_message(ErrorCode.INSTALL_FAIL, self.lang)
-        QMessageBox.critical(self, msg["title"], msg["body"] + "\n" + msg["action"])
+        msg = error_message(code, self.lang)
+        QMessageBox.critical(self, msg["title"], f"{msg['body']}\n\n{msg['action']}\n({msg['code']})")
+
+    @staticmethod
+    def _engine_error_code(stderr: str) -> ErrorCode:
+        """Specific code from the engine's stderr JSON (last JSON line); never shows raw text."""
+        for line in reversed(stderr.strip().splitlines()):
+            try:
+                value = json.loads(line)["error"]["code"]
+                return ErrorCode(value)
+            except (ValueError, KeyError, TypeError):
+                continue
+        return ErrorCode.INSTALL_FAIL
 
     def _engine_finished(self, code, exit_status):
         raw = bytes(self.engine_process.readAllStandardOutput()).decode(errors="replace")
+        err = bytes(self.engine_process.readAllStandardError()).decode(errors="replace")
         self._cleanup_engine()
         try:
             report = json.loads(raw)
         except ValueError:
             report = {}
         if code != 0 or report.get("status") != "os_installed" or not report.get("installed"):
-            self._engine_error()
+            self._engine_error(code=self._engine_error_code(err))
             return
         self.next_btn.setEnabled(False)
         self.back_btn.setEnabled(False)

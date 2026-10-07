@@ -4,14 +4,22 @@ from dataclasses import asdict
 
 from memex_engine.partition import execute_plan
 from memex_installer.disks import find_disk
-from memex_installer.errors import ErrorCode, error_message
+from memex_engine.backend import checked_preflight
+from memex_installer.errors import ErrorCode, MemexError, error_message
 from memex_installer.models import Answers, DiskInfo
-from memex_installer.preflight import run_preflight
 
 
-def build_preview(answers: Answers, disks: list[DiskInfo]) -> dict:
-    result = run_preflight(answers, disks)
+def build_preview(answers: Answers, disks: list[DiskInfo], inspect=None) -> dict:
+    """`inspect` (live only, read-only) supplies exact NTFS sizes; without it same-disk sizes are estimates."""
     report = {"status": "blocked", "installed": False, "disk_changes": False}
+    try:
+        result, _ = checked_preflight(answers, disks, inspect)
+    except MemexError as exc:
+        report["error"] = error_message(exc.code, answers.language.value)
+        return report
+    except Exception:  # noqa: BLE001 - inspection failures must not leak raw text
+        report["error"] = error_message(ErrorCode.INSTALL_FAIL, answers.language.value)
+        return report
     if not result.ok or result.plan is None:
         report["error"] = error_message(result.error or ErrorCode.INSTALL_FAIL, answers.language.value)
         return report
@@ -26,9 +34,10 @@ def build_preview(answers: Answers, disks: list[DiskInfo]) -> dict:
         "profile": answers.profile.value,
         "operations": execute_plan(result.plan, target),
         "warning": error_message(result.warning, answers.language.value) if result.warning else None,
+        "size_estimated": result.estimated,
         "limitations": ["Preview only: no operating system has been installed."] + (
             ["Same-disk resizing requires partition and filesystem validation; the size is an estimate."]
-            if result.plan.shrinks_windows else []
+            if result.plan.shrinks_windows and result.estimated else []
         ),
     })
     return report
