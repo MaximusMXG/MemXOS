@@ -58,3 +58,14 @@ def test_groups_filtered_by_target_etc_group():
     text = 'root:x:0:\nsudo:x:27:\nadm:x:4:\nlpadmin:x:7:\nusers:x:100:\n'
     assert existing_groups(USER_GROUPS, text) == ['sudo', 'adm', 'lpadmin', 'users']
     assert {'lpadmin', 'cdrom', 'dip', 'users', 'plugdev'} <= set(USER_GROUPS)
+
+
+def test_adjtime_local_for_dual_boot_utc_otherwise(tmp_path):
+    for name, dual, mode in (('d', True, 'LOCAL'), ('s', False, 'UTC')):
+        root = tmp_path / name
+        _zone(root, 'America/Edmonton')
+        (root / 'etc').mkdir(parents=True, exist_ok=True)
+        (root / 'etc/adjtime').write_text('0.0 0 0.0\n0\nLOCAL\n' if not dual else 'junk\n')
+        configure_files(root, _account(dual_boot=dual))
+        assert (root / 'etc/adjtime').read_text() == f'0.0 0 0.0\n0\n{mode}\n'
+        assert (root / 'etc/adjtime').stat().st_mode & 0o777 == 0o644

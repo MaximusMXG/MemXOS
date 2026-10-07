@@ -30,6 +30,11 @@ def configure_files(root: Path, account: dict) -> None:
     zone.symlink_to('/usr/share/zoneinfo/' + tz)
     atomic_write(root / 'etc/default/grub.d/90-memex.cfg',
                  'GRUB_TIMEOUT_STYLE=menu\nGRUB_TIMEOUT=5\nGRUB_DISABLE_OS_PROBER=' + ('false' if account['dual_boot'] else 'true') + '\n', 0o644)
+    # Windows keeps the RTC in local time. Match it so the clock doesn't jump when switching OS (what
+    # `timedatectl set-local-rtc 1` persists). Tradeoff: systemd warns a local RTC is less robust around
+    # DST; the alternative, Windows' RealTimeIsUniversal registry key, means editing Windows, which we never do.
+    # Always written so a live-image adjtime can't leak onto a non-dual-boot install.
+    atomic_write(root / 'etc/adjtime', '0.0 0 0.0\n0\n' + ('LOCAL' if account['dual_boot'] else 'UTC') + '\n', 0o644)
     (root / 'etc/memex/live-build.json').unlink(missing_ok=True)
     # No live-session autologin may survive onto the customer OS.
     for path in [root / 'etc/sddm.conf', *(root / 'etc/sddm.conf.d').glob('*.conf')]:

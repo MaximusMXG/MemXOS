@@ -77,7 +77,9 @@ sudo bash iso/build.sh --store-timezone America/Vancouver --store-name "Burnaby"
 | Ontario | `America/Toronto` |
 
 The installer writes this zone to the customer OS. Dual-boot note: Windows keeps the
-hardware clock in local time; Linux stays on UTC and is deliberately left unchanged.
+hardware clock in local time, so on dual-boot installs `/etc/adjtime` is set to `LOCAL`
+(like `timedatectl set-local-rtc 1`) and the clock matches in both systems; non-dual-boot installs use UTC.
+Windows is never modified. After a daylight-saving change, booting Windows once with internet fixes any drift.
 
 Existing output images are never overwritten. Build workspaces are retained for
 diagnosis. The script attempts to unmount its own mounts on exit. If a run fails,
