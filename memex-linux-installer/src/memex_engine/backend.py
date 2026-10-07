@@ -162,7 +162,7 @@ def install(answers: Answers, confirm_disk: str) -> int:
             raise ValueError('Disk state changed; restart the wizard.')
         try:
             with Path('/var/log/memex-install/engine.log').open('a') as log:
-                process = subprocess.run(['curtin', '-c', str(config_path), 'install'],
+                process = subprocess.run(['curtin', '-vv', '-c', str(config_path), 'install'],
                                          stdout=log, stderr=subprocess.STDOUT, timeout=7200,
                                          env={**os.environ, 'LC_ALL': 'C'})
             if process.returncode:

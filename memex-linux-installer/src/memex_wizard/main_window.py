@@ -8,12 +8,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QProcess
+import time
+
+from PySide6.QtCore import Qt, QProcess, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -40,6 +43,7 @@ from memex_wizard.pages.confirm import ConfirmPage
 from memex_wizard.pages.disk import DiskPage
 from memex_wizard.pages.language import LanguagePage
 from memex_wizard.pages.pc_type import PcTypePage
+from memex_wizard import progress
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
@@ -50,6 +54,9 @@ class MainWindow(QMainWindow):
         self.demo = demo
         self.install_enabled = not demo and os.geteuid() == 0 and live_available()
         self.engine_process = None
+        self.engine_log = progress.ENGINE_LOG
+        self.engine_started = 0.0
+        self.engine_log_offset = 0
         self.install_session = None
         self.lang = "en"
         self.profile = ProfileId.HOME
@@ -68,6 +75,19 @@ class MainWindow(QMainWindow):
 
         self.version_label = QLabel(PRODUCT_VERSION)
         self.layout.addWidget(self.version_label)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.hide()
+        self.layout.addWidget(self.progress_bar)
+        self.stuck_label = QLabel()
+        self.stuck_label.setWordWrap(True)
+        self.stuck_label.setStyleSheet("color: #b00020; font-weight: bold;")
+        self.stuck_label.hide()
+        self.layout.addWidget(self.stuck_label)
+        self.progress_timer = QTimer(self)
+        self.progress_timer.setInterval(2000)
+        self.progress_timer.timeout.connect(self._update_progress)
 
         self.stack = QStackedWidget()
         self.layout.addWidget(self.stack)
@@ -209,12 +229,29 @@ class MainWindow(QMainWindow):
             self.back_btn.setEnabled(False)
             self.stack.setEnabled(False)
             self.version_label.setText(t(self.lang, "install_running"))
+            self.engine_started = time.time()
+            self.engine_log_offset = progress.log_size(self.engine_log)
+            self.progress_bar.show()
+            self.progress_timer.start()
             self.engine_process.start(sys.executable, ["-m", "memex_engine.run", str(path),
                                        "--install", "--confirm-disk", answers.target_disk_id])
         except Exception:
             self._engine_error()
 
+    def _update_progress(self):
+        key, idle = progress.engine_progress(self.engine_log, self.engine_started,
+                                             offset=self.engine_log_offset)
+        secs = int(time.time() - self.engine_started)
+        mmss = f"{secs // 60:02d}:{secs % 60:02d}"
+        self.version_label.setText(f"{t(self.lang, key)}\n{t(self.lang, 'progress_elapsed').format(mmss=mmss)}")
+        stuck = progress.is_stuck(idle)
+        self.stuck_label.setText(t(self.lang, "progress_stuck") if stuck else "")
+        self.stuck_label.setVisible(stuck)
+
     def _cleanup_engine(self):
+        self.progress_timer.stop()
+        self.progress_bar.hide()
+        self.stuck_label.hide()
         if self.install_session:
             self.install_session.cleanup()
             self.install_session = None
